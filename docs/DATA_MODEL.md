@@ -4,13 +4,16 @@ This is the authoritative reference for the domain model and the balance
 calculations. It supersedes the original planning doc — a few rules were
 tightened during implementation (noted inline as **Refinement**).
 
-There are two entities: `Transaction` (below) and `Budget` (see
-[Entity: Budget](#entity-budget)).
+Entities: `Transaction` (below), `Budget` ([Entity: Budget](#entity-budget)),
+and `Investment` (its own subsystem — see [docs/INVESTMENTS.md](INVESTMENTS.md)).
 
 ## Entity: `Transaction`
 
 There is no `Account` table — "account" is a `type` field on the transaction
-itself (see [Scope](#scope-decisions)).
+itself (see [Scope](#scope-decisions)). **Transactions are `CHECKING`/`SAVINGS`
+only** — `INVESTING` is no longer a valid transaction account (rejected by
+`TransactionService`); investing is the `Investment` entity, and the `INVESTING`
+balance reflects holdings.
 
 | Field               | Type          | Notes                                                            |
 |---------------------|---------------|-------------------------------------------------------------------|
@@ -41,7 +44,9 @@ violation returns **400** via `InvalidTransactionException`.
 
 ## Balance formula
 
-Per-account running balance as of date `T`:
+Cash-account (`CHECKING`/`SAVINGS`) running balance as of date `T`, folding in
+investment cash flows (`FUND` debits its source account; `CASH_OUT` credits
+SAVINGS — see [docs/INVESTMENTS.md](INVESTMENTS.md)):
 
 ```
 balance(account, T) = Σ INCOME.amount        (accountType = account, date ≤ T)
@@ -49,9 +54,14 @@ balance(account, T) = Σ INCOME.amount        (accountType = account, date ≤ T
                      − Σ EXPENSE.amount       (accountType = account, date ≤ T)
                      − Σ TRANSFER.amount      (accountType = account, date ≤ T)        [outgoing]
                      + Σ TRANSFER.amount      (linkedAccountType = account, date ≤ T)  [incoming]
+                     − Σ FUND.amount          (event source = account, eventDate ≤ T)
+                     + Σ CASH_OUT.amount      (account = SAVINGS, eventDate ≤ T)
+
+balance(INVESTING) = Σ currentValue of OPEN holdings   (always current — no valuation history)
 ```
 
-Implemented in `BalanceService.balanceAsOf()`.
+Implemented in `BalanceService.cashBalance()`; the INVESTING reflection is read
+from the `Investment` entity.
 
 ## Dashboard metrics
 
@@ -66,13 +76,16 @@ spending(period)      = Σ EXPENSE.amount                                      (
 
 netSpending(period)   = Σ EXPENSE.amount                                      (in period)
 
-netInvestment(period) = Σ TRANSFER.amount where linkedAccountType = INVESTING  (in period)
-                       − Σ TRANSFER.amount where accountType = INVESTING       (in period)  [withdrawals]
+netInvestment(period) = Σ FUND.amount     (eventDate in period)
+                       − Σ CASH_OUT.amount (eventDate in period)
 ```
 
 In words: **spending** = everything that left checking for expenses *or* for
-savings; **net spending** = expenses only; **net investment** = net flow into
-investing (contributions minus withdrawals).
+savings; **net spending** = expenses only; **net investment** = net cash moved
+into investments over the period (buys minus cash-outs — from the `Investment`
+subsystem, not transactions). `balance(INVESTING)` is the current holdings value
+regardless of the selected period (documented simplification — no valuation
+history yet).
 
 Implemented in `BalanceService.summarize()`
 (`backend/src/main/java/com/financedash/service/BalanceService.java`) —

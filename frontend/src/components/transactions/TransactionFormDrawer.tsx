@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import {
-  ACCOUNT_TYPES,
+  TRANSACTION_ACCOUNT_TYPES,
   CATEGORIES,
   TRANSACTION_TYPES,
   categoryApplies,
@@ -96,14 +96,14 @@ export function TransactionFormDrawer({ transaction, onClose, onSubmit }: Transa
             label={needsLinkedAccount ? "From Account" : "Account"}
             value={accountType}
             onChange={(v) => setAccountType(v as AccountType)}
-            options={ACCOUNT_TYPES.map((a) => ({ value: a, label: formatEnumLabel(a) }))}
+            options={TRANSACTION_ACCOUNT_TYPES.map((a) => ({ value: a, label: formatEnumLabel(a) }))}
           />
           {needsLinkedAccount && (
             <Select
               label="To Account"
               value={linkedAccountType}
               onChange={(v) => setLinkedAccountType(v as AccountType)}
-              options={ACCOUNT_TYPES.filter((a) => a !== accountType).map((a) => ({
+              options={TRANSACTION_ACCOUNT_TYPES.filter((a) => a !== accountType).map((a) => ({
                 value: a,
                 label: formatEnumLabel(a),
               }))}

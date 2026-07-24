@@ -39,6 +39,7 @@ Validation (400 on violation — see [Data Model](DATA_MODEL.md)):
 - `linkedAccountType` required and `!= accountType` iff `transactionType = TRANSFER`; forbidden otherwise.
 - `category` required iff `transactionType` is `INCOME`/`EXPENSE`; forbidden otherwise.
 - `amount > 0`.
+- `accountType` and `linkedAccountType` must be `CHECKING`/`SAVINGS` — **`INVESTING` is rejected** (investing is the Investments API, below).
 
 `POST` returns 201 with the created `TransactionResponse`. `PUT` returns 200
 with the updated resource, or 404 if `id` doesn't exist.
@@ -107,6 +108,43 @@ each a valid `Category`). `POST` → 201; `PUT` → 200 or 404.
 
 ### `DELETE /api/budgets/{id}`
 Returns 204, or 404.
+
+## Investments
+
+Stock holdings, separate from the transaction ledger. Buys/cash-outs are recorded
+as investment events that fold into cash balances (see [docs/INVESTMENTS.md](INVESTMENTS.md)).
+
+### `GET /api/investments`
+All holdings (symbol-ordered), as `InvestmentResponse[]`:
+```json
+[{ "id": 1, "stockSymbol": "AAPL", "currentValue": 350.00, "netCashInvested": 150.00,
+   "positionChangePct": 133.33, "status": "OPEN", "createdAt": "…", "updatedAt": "…" }]
+```
+`positionChangePct` = (currentValue − netCashInvested) / netCashInvested × 100, or
+`null` when netCashInvested ≤ 0.
+
+### `GET /api/investments/summary`
+Totals across OPEN holdings: `{ "totalNetInvested", "totalCurrentValue", "positionChangePct" }`.
+
+### `GET /api/investments/{id}`
+Single `InvestmentResponse`, or 404.
+
+### `POST /api/investments`
+Add a holding (a buy). Body: `{ "stockSymbol", "amount", "sourceAccount" }` —
+`amount` debits `sourceAccount` (CHECKING/SAVINGS); adding an existing symbol merges.
+400 if `sourceAccount` is INVESTING, blank symbol, or `amount ≤ 0`. Returns 201.
+
+### `PUT /api/investments/{id}`
+Edit: `{ "stockSymbol", "currentValue" }` — rename and/or mark-to-market (no cash moves).
+400 if the holding is cashed out; 404 if missing.
+
+### `POST /api/investments/{id}/cash-out`
+Body: `{ "amount" }` (≤ current position) — moves the amount to SAVINGS, reduces the
+position; a fully cashed-out holding becomes `CASHED_OUT` (kept as history). 400 if the
+amount exceeds the position or the holding is already cashed out.
+
+### `DELETE /api/investments/{id}`
+Removes a holding and its events. Returns 204, or 404.
 
 ## Errors
 

@@ -1,6 +1,10 @@
 export const ACCOUNT_TYPES = ["CHECKING", "SAVINGS", "INVESTING"] as const;
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
+// Accounts selectable on a transaction. INVESTING is no longer a transaction
+// account — it's the Investments entity, and its balance reflects holdings.
+export const TRANSACTION_ACCOUNT_TYPES = ["CHECKING", "SAVINGS"] as const;
+
 export const TRANSACTION_TYPES = ["INCOME", "EXPENSE", "TRANSFER", "ADJUSTMENT"] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 

@@ -87,6 +87,16 @@ public class TransactionService {
         TransactionType type = request.transactionType();
         boolean isIncomeOrExpense = type == TransactionType.INCOME || type == TransactionType.EXPENSE;
 
+        // Investing is no longer part of the transaction ledger — it's its own entity,
+        // and the INVESTING balance reflects holdings. Transactions are CHECKING/SAVINGS only.
+        if (request.accountType() == AccountType.INVESTING) {
+            throw new InvalidTransactionException(
+                    "INVESTING is no longer a transaction account; manage investments on the Investments page");
+        }
+        if (request.linkedAccountType() == AccountType.INVESTING) {
+            throw new InvalidTransactionException("Transfers to/from INVESTING are no longer supported");
+        }
+
         if (isIncomeOrExpense && request.category() == null) {
             throw new InvalidTransactionException("category is required for " + type + " transactions");
         }

@@ -15,6 +15,13 @@ export function formatEnumLabel(value: string): string {
     .join(" ");
 }
 
+/** Signed percentage, e.g. +50.0% / −20.0%; "—" for null (undefined baseline). */
+export function formatPercent(pct: number | null): string {
+  if (pct == null) return "—";
+  const sign = pct > 0 ? "+" : "";
+  return `${sign}${pct.toFixed(1)}%`;
+}
+
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
     year: "numeric",

@@ -24,6 +24,12 @@ export function AppShell({ children }: AppShellProps) {
           >
             Transactions
           </NavLink>
+          <NavLink
+            to="/investments"
+            className={({ isActive }) => `app-nav__link${isActive ? " app-nav__link--active" : ""}`}
+          >
+            Investments
+          </NavLink>
         </div>
       </nav>
       {children}

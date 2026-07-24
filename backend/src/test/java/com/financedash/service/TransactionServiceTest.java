@@ -118,6 +118,27 @@ class TransactionServiceTest {
                     .isInstanceOf(InvalidTransactionException.class)
                     .hasMessageContaining("linkedAccountType must not be set for ADJUSTMENT");
         }
+
+        @Test
+        void rejectsInvestingAsAccountType() {
+            // Investing left the transaction ledger — it's its own entity now.
+            TransactionRequest req = request(
+                    TransactionType.EXPENSE, AccountType.INVESTING, null, Category.GROCERIES);
+            assertThatThrownBy(() -> service.create(req))
+                    .isInstanceOf(InvalidTransactionException.class)
+                    .hasMessageContaining("INVESTING");
+            verify(repository, never()).save(any());
+        }
+
+        @Test
+        void rejectsInvestingAsLinkedAccount() {
+            TransactionRequest req = request(
+                    TransactionType.TRANSFER, AccountType.CHECKING, AccountType.INVESTING, null);
+            assertThatThrownBy(() -> service.create(req))
+                    .isInstanceOf(InvalidTransactionException.class)
+                    .hasMessageContaining("INVESTING");
+            verify(repository, never()).save(any());
+        }
     }
 
     @Nested
@@ -143,13 +164,13 @@ class TransactionServiceTest {
         @Test
         void persistsValidTransfer() {
             TransactionRequest req = request(
-                    TransactionType.TRANSFER, AccountType.CHECKING, AccountType.INVESTING, null);
+                    TransactionType.TRANSFER, AccountType.CHECKING, AccountType.SAVINGS, null);
             when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             Transaction saved = service.create(req);
 
             assertThat(saved.getTransactionType()).isEqualTo(TransactionType.TRANSFER);
-            assertThat(saved.getLinkedAccountType()).isEqualTo(AccountType.INVESTING);
+            assertThat(saved.getLinkedAccountType()).isEqualTo(AccountType.SAVINGS);
             assertThat(saved.getCategory()).isNull();
         }
 
