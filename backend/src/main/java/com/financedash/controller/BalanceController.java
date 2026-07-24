@@ -1,6 +1,7 @@
 package com.financedash.controller;
 
 import com.financedash.dto.BalanceSummaryResponse;
+import com.financedash.dto.Period;
 import com.financedash.dto.TimeRange;
 import com.financedash.service.BalanceService;
 import java.time.LocalDate;
@@ -29,16 +30,7 @@ public class BalanceController {
             @RequestParam(required = false) TimeRange range,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        LocalDate today = LocalDate.now();
-        LocalDate effectiveTo = to != null ? to : today;
-        LocalDate effectiveFrom;
-        if (range != null) {
-            effectiveFrom = range.resolveFrom(effectiveTo);
-        } else if (from != null) {
-            effectiveFrom = from;
-        } else {
-            effectiveFrom = TimeRange.MONTH.resolveFrom(effectiveTo);
-        }
-        return balanceService.summarize(effectiveFrom, effectiveTo);
+        Period period = Period.resolve(range, from, to, LocalDate.now());
+        return balanceService.summarize(period.from(), period.to());
     }
 }

@@ -1,7 +1,8 @@
 # Personal Finance Dashboard (MVP)
 
-Single-user personal finance tracker: log everyday transactions and see net
-worth, spending, net spending, and net investment over selectable time windows.
+Single-user personal finance tracker: log everyday transactions, set spending
+budgets, and see net worth, spending, net spending, net investment, and
+budget progress over selectable time windows.
 
 Stack: Spring Boot 3 (Java 21) + PostgreSQL backend, React 18 + TypeScript
 (Vite) frontend, Docker Compose orchestration.
@@ -24,6 +25,9 @@ In short:
 - TRANSFER moves money from `accountType` to `linkedAccountType`.
 - ADJUSTMENT seeds an opening balance / corrects an account — it affects net
   worth only, not the flow metrics.
+- A **budget** has a name, a value (target), and a set of categories. Its spent
+  total = expenses in those categories over the Dashboard's selected window;
+  progress bars show on the Dashboard.
 
 ## Run with Docker Compose
 
