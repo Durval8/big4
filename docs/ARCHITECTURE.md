@@ -46,18 +46,26 @@ instead — see `VITE_API_PROXY_TARGET` to override.
 
 `backend/src/main/java/com/financedash/`
 ```
-domain/       AccountType, TransactionType, Category (enums), Transaction (entity)
-repository/   TransactionRepository (Spring Data derived queries)
+domain/       AccountType, TransactionType, Category (enums),
+              Transaction (entity), Budget (entity)
+repository/   TransactionRepository, BudgetRepository (Spring Data)
 dto/          TransactionRequest/Response, BalanceSummaryResponse, AccountBalances,
-              TimeRange, ErrorResponse
+              BudgetRequest/Response, BudgetProgressResponse,
+              TimeRange, Period (shared range→window resolver), ErrorResponse
 service/      TransactionService (CRUD + cross-field validation),
-              BalanceService (metric formulas)
-controller/   TransactionController, BalanceController
+              BalanceService (metric formulas),
+              BudgetService (CRUD + per-period spend computation)
+controller/   TransactionController, BalanceController, BudgetController
 exception/    ResourceNotFoundException, InvalidTransactionException,
               GlobalExceptionHandler (@RestControllerAdvice)
 config/       WebConfig (CORS for the frontend origin),
               JpaConfig (@EnableJpaAuditing)
 ```
+
+**Shared period resolution:** `dto/Period.resolve(range, from, to, today)` turns
+the `range`/`from`/`to` query params into a `[from, to]` window. Both
+`BalanceController` and `BudgetController` use it so the Dashboard's balances
+and budgets always reflect the same window.
 
 **Why JPA auditing is its own config:** `@EnableJpaAuditing` lives in
 `config/JpaConfig`, not on `FinanceDashApplication`. If it sits on the
@@ -72,17 +80,21 @@ for why.
 
 `frontend/src/`
 ```
-types/transaction.ts        Enums (as const arrays) + Transaction/BalanceSummary types,
-                             mirroring the backend domain model
-api/                        client.ts (fetch wrapper + API_BASE), transactions.ts, balances.ts
-hooks/                      useTransactions (list + CRUD + reload), useBalances (fetch on range change)
+types/                      transaction.ts (enums + Transaction/BalanceSummary),
+                            budget.ts (Budget/BudgetInput/BudgetProgress)
+api/                        client.ts (fetch wrapper + API_BASE), transactions.ts,
+                            balances.ts, budgets.ts
+hooks/                      useTransactions, useBalances,
+                            useBudgets (progress for range + CRUD + reload)
 lib/format.ts                formatCurrency / formatEnumLabel / formatDate helpers
 components/
   layout/                   AppShell (nav), TimeRangeSelector
   dashboard/                BalanceCard, BalanceSummaryGrid (the 4 metrics),
-                            AccountBalancesCard (per-account breakdown — added
-                            during implementation to surface accountBalances,
-                            not explicitly named in the original plan)
+                            AccountBalancesCard (per-account breakdown),
+                            BudgetSection (Budgets on the Dashboard — list + add/
+                            edit/delete under the same time range),
+                            BudgetProgressCard (spent vs value, over-budget bar),
+                            BudgetFormDrawer (name/value/multi-select categories)
   transactions/              TransactionTable, TransactionRow, TransactionFilters,
                             TransactionFormDrawer (create/edit — the field set
                             adapts to transactionType), DeleteConfirmDialog

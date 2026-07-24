@@ -73,6 +73,41 @@ Returns a `BalanceSummaryResponse`:
 `netWorth`/`accountBalances` are as-of `to`; the other three fields are summed
 over `[from, to]` — see [Data Model](DATA_MODEL.md) for the exact formulas.
 
+## Budgets
+
+### `GET /api/budgets`
+Returns all budgets (name-ordered) as `BudgetResponse[]`:
+```json
+[{ "id": 1, "name": "Food", "value": 400.00, "categories": ["GROCERIES", "DINING_OUT"],
+   "createdAt": "…", "updatedAt": "…" }]
+```
+
+### `GET /api/budgets/progress`
+Takes the **same** `range` / `from` / `to` params as `GET /api/balances`
+(defaults to the last month). Returns each budget with its spend for the
+period, as `BudgetProgressResponse[]`:
+```json
+[{ "id": 1, "name": "Food", "value": 400.00, "categories": ["GROCERIES", "DINING_OUT"],
+   "spent": 150.00, "remaining": 250.00, "from": "2026-06-25", "to": "2026-07-24" }]
+```
+`spent` = Σ EXPENSE amounts in the budget's categories over `[from, to]`;
+`remaining` = `value − spent` (negative when over budget). See
+[Data Model](DATA_MODEL.md#entity-budget).
+
+### `GET /api/budgets/{id}`
+Single `BudgetResponse`, or 404.
+
+### `POST /api/budgets` / `PUT /api/budgets/{id}`
+Body (`BudgetRequest`):
+```json
+{ "name": "Food", "value": 400.00, "categories": ["GROCERIES", "DINING_OUT"] }
+```
+Validation (400): `name` non-blank, `value > 0`, `categories` non-empty (and
+each a valid `Category`). `POST` → 201; `PUT` → 200 or 404.
+
+### `DELETE /api/budgets/{id}`
+Returns 204, or 404.
+
 ## Errors
 
 Every non-2xx response is an `ErrorResponse`:

@@ -4,10 +4,13 @@ This is the authoritative reference for the domain model and the balance
 calculations. It supersedes the original planning doc — a few rules were
 tightened during implementation (noted inline as **Refinement**).
 
+There are two entities: `Transaction` (below) and `Budget` (see
+[Entity: Budget](#entity-budget)).
+
 ## Entity: `Transaction`
 
-The whole app has exactly one entity. There is no `Account` table — "account"
-is a `type` field on the transaction itself (see [Scope](#scope-decisions)).
+There is no `Account` table — "account" is a `type` field on the transaction
+itself (see [Scope](#scope-decisions)).
 
 | Field               | Type          | Notes                                                            |
 |---------------------|---------------|-------------------------------------------------------------------|
@@ -76,6 +79,44 @@ Implemented in `BalanceService.summarize()`
 verified end-to-end against hand-computed examples during implementation
 (see `docs/API.md` for the worked example).
 
+## Entity: `Budget`
+
+A named spending target tracked against a set of categories.
+
+| Field         | Type            | Notes                                              |
+|---------------|-----------------|-----------------------------------------------------|
+| `id`          | `Long`          | generated                                          |
+| `name`        | `String`        | required, non-blank                                |
+| `value`       | `BigDecimal`    | required, `> 0` — the target/limit                 |
+| `categories`  | `Set<Category>` | required, non-empty — stored in a `budget_categories` join table (`@ElementCollection`, **EAGER**) |
+| `createdAt`/`updatedAt` | `Instant` | auto-managed (JPA auditing)                       |
+
+**Spent computation.** A budget's `spent` for a period is:
+
+```
+spent(budget, from, to) = Σ EXPENSE.amount   where category ∈ budget.categories
+                                              and from ≤ transactionDate ≤ to
+remaining = value − spent      (negative when over budget)
+```
+
+- **Expenses only.** Only `EXPENSE` transactions count. `INCOME` in a budget's
+  categories is ignored (a budget tracks spending), and `TRANSFER`/`ADJUSTMENT`
+  have no category so never count.
+- **Period-scoped.** `spent` is measured over the window the caller passes —
+  the Dashboard uses its own time-range selector, so budgets and balances move
+  together. It is not stored; it's computed on demand in
+  `BudgetService.progress()`.
+- Because `Category` is a flat enum, the create/edit UI lists income categories
+  (e.g. `SALARY`) too. A budget built only from income categories will always
+  read `spent = 0` — expected, given the expenses-only rule; there's no
+  income/expense partition of the enum in this MVP.
+- **Overlap allowed.** A category may appear in multiple budgets; each budget
+  sums its own categories independently.
+
+Categories are fetched **EAGER** deliberately: services aren't `@Transactional`
+and `open-in-view` is off, so a lazy collection would fail to load once the
+session closes (during response mapping and progress computation).
+
 ## Scope decisions
 
 Decided before implementation and unchanged:
@@ -83,6 +124,7 @@ Decided before implementation and unchanged:
 - **Single user, no auth.** No `User` entity; every transaction implicitly belongs to "the" user.
 - **Fixed enums, not manageable entities.** `AccountType` and `Category` are enums baked into the code — there's no "add a new account" or "add a new category" CRUD. The original spec's "account" (checking/savings/investing) and "category" examples map directly onto these enums rather than separate tables.
 - **Explicit `transactionType`, not signed amounts.** `amount` is always positive; direction and meaning come from `transactionType` + `accountType`/`linkedAccountType`.
+- **Budgets are user-managed** (unlike accounts/categories): full create/edit/delete CRUD. A budget references categories by the fixed `Category` enum.
 
 ## Refinements made during implementation
 
