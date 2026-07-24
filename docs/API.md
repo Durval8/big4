@@ -1,0 +1,106 @@
+# API Reference
+
+Base URL: `http://localhost:8080/api` (or whatever `BACKEND_PORT` is set to).
+All bodies are JSON. Errors follow a consistent shape (see [Errors](#errors)).
+
+## Transactions
+
+### `GET /api/transactions`
+
+Query params (all optional):
+
+| Param         | Type                 | Default                    |
+|---------------|----------------------|-----------------------------|
+| `from`        | ISO date             | `1970-01-01`                |
+| `to`          | ISO date             | today                        |
+| `accountType` | `CHECKING\|SAVINGS\|INVESTING` | (none — all accounts) |
+| `category`    | one of `Category`    | (none — all categories)     |
+
+Returns transactions in the range, newest first, as `TransactionResponse[]`.
+
+### `GET /api/transactions/{id}`
+Returns a single `TransactionResponse`, or 404.
+
+### `POST /api/transactions` / `PUT /api/transactions/{id}`
+
+Body (`TransactionRequest`):
+```json
+{
+  "description": "Brokerage contribution",
+  "amount": 300.00,
+  "transactionDate": "2026-07-10",
+  "accountType": "CHECKING",
+  "linkedAccountType": "INVESTING",
+  "category": null,
+  "transactionType": "TRANSFER"
+}
+```
+Validation (400 on violation — see [Data Model](DATA_MODEL.md)):
+- `linkedAccountType` required and `!= accountType` iff `transactionType = TRANSFER`; forbidden otherwise.
+- `category` required iff `transactionType` is `INCOME`/`EXPENSE`; forbidden otherwise.
+- `amount > 0`.
+
+`POST` returns 201 with the created `TransactionResponse`. `PUT` returns 200
+with the updated resource, or 404 if `id` doesn't exist.
+
+### `DELETE /api/transactions/{id}`
+Returns 204, or 404 if `id` doesn't exist.
+
+## Balances
+
+### `GET /api/balances`
+
+Query params — pass **either** `range` **or** `from`/`to` (`range` wins if both are given; defaults to `MONTH` if neither is given):
+
+| Param   | Type                              |
+|---------|-----------------------------------|
+| `range` | `WEEK\|MONTH\|YEAR\|ALL` (resolved against today) |
+| `from`  | ISO date                          |
+| `to`    | ISO date (defaults to today)      |
+
+Returns a `BalanceSummaryResponse`:
+```json
+{
+  "from": "2026-06-25",
+  "to": "2026-07-24",
+  "netWorth": 2824.50,
+  "spending": 175.50,
+  "netSpending": 175.50,
+  "netInvestment": 500.00,
+  "accountBalances": { "checking": 2324.50, "savings": 0, "investing": 500.00 }
+}
+```
+`netWorth`/`accountBalances` are as-of `to`; the other three fields are summed
+over `[from, to]` — see [Data Model](DATA_MODEL.md) for the exact formulas.
+
+## Errors
+
+Every non-2xx response is an `ErrorResponse`:
+```json
+{
+  "timestamp": "2026-07-24T10:42:23Z",
+  "status": 400,
+  "error": "Bad Request",
+  "messages": ["linkedAccountType is required for TRANSFER transactions"]
+}
+```
+`404` for a missing resource, `400` for validation failures. All three failure
+sources produce this same shape:
+- Bean Validation field errors (blank description, non-positive amount, missing required field)
+- the service cross-field rules (`InvalidTransactionException`)
+- unreadable bodies — malformed JSON or an invalid enum value such as an unknown `transactionType`/`accountType`/`category` (`HttpMessageNotReadableException`), which fail during deserialization before validation runs
+
+## Worked example (verified during implementation)
+
+Four transactions, all on `CHECKING` unless noted:
+1. `ADJUSTMENT` $1,000.00 on 2026-01-01 (opening balance)
+2. `INCOME` $2,000.00 / `SALARY` on 2026-07-01 (paycheck)
+3. `EXPENSE` $175.50 / `GROCERIES` on 2026-07-05
+4. `TRANSFER` $500.00 → `INVESTING` on 2026-07-24
+
+`GET /api/balances?range=MONTH` (today = 2026-07-24) returns exactly the
+`BalanceSummaryResponse` shown above: `netWorth` includes all four
+transactions ($1000 + $2000 − $175.50 − $500 + $500 = $2824.50, split
+$2324.50 checking / $500 investing); `spending`/`netSpending` = $175.50
+(the expense only, transaction #4 isn't a savings transfer); `netInvestment`
+= $500.00 (the transfer into investing).
