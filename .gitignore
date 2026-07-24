@@ -1,0 +1,18 @@
+.env
+
+# Backend
+backend/target/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+
+# Editor / IDE
+.obsidian/
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
