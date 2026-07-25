@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { useInvestments } from "../hooks/useInvestments";
+import { useInvestmentNews } from "../hooks/useInvestmentNews";
 import { InvestmentTable } from "../components/investments/InvestmentTable";
 import { InvestmentFormDrawer } from "../components/investments/InvestmentFormDrawer";
 import { CashOutDialog } from "../components/investments/CashOutDialog";
 import { ManualPriceDialog } from "../components/investments/ManualPriceDialog";
+import { NewsCard } from "../components/investments/NewsCard";
 import { Button } from "../components/common/Button";
 import { formatCurrency, formatPercent } from "../lib/format";
 import type { Investment } from "../types/investment";
 
 export function InvestmentsPage() {
   const { investments, summary, loading, error, create, update, cashOut, setPrice } = useInvestments();
+  const news = useInvestmentNews();
 
   const [isCreating, setIsCreating] = useState(false);
   const [editing, setEditing] = useState<Investment | null>(null);
@@ -60,6 +63,8 @@ export function InvestmentsPage() {
         )}
       </div>
 
+      <NewsCard feed={news.feed} loading={news.loading} updating={news.updating} />
+
       {drawerOpen && (
         <InvestmentFormDrawer
           investment={editing}
@@ -67,7 +72,10 @@ export function InvestmentsPage() {
             setIsCreating(false);
             setEditing(null);
           }}
-          onCreate={create}
+          onCreate={async (input) => {
+            await create(input);
+            void news.pollForUpdate(); // a new symbol triggers a rebuild; poll until it lands
+          }}
           onUpdate={update}
         />
       )}
@@ -79,6 +87,7 @@ export function InvestmentsPage() {
           onConfirm={async (amount) => {
             await cashOut(cashingOut.id, amount);
             setCashingOut(null);
+            void news.pollForUpdate(); // a full cash-out drops the holding's news
           }}
         />
       )}

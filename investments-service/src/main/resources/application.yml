@@ -38,3 +38,10 @@ pricing:
 # Outbox relay: how often to sweep unpublished messages to the broker.
 outbox:
   relay-interval-ms: ${OUTBOX_RELAY_INTERVAL_MS:2000}
+
+news:
+  refresh-cron: ${NEWS_REFRESH_CRON:0 0 */4 * * *}   # every 4 hours
+  lookback-hours: ${NEWS_LOOKBACK_HOURS:48}          # per-symbol article window
+  per-stock: ${NEWS_PER_STOCK:3}                     # candidate articles per holding
+  max-items: ${NEWS_MAX_ITEMS:7}                     # feed size
+  weight-decay: ${NEWS_WEIGHT_DECAY:0.625}           # per-rank odds ratio (lower = steeper)

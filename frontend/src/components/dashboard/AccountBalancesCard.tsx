@@ -5,27 +5,29 @@ interface AccountBalancesCardProps {
   balances: AccountBalances;
 }
 
-export function AccountBalancesCard({ balances }: AccountBalancesCardProps) {
-  const rows: Array<[string, number]> = [
-    ["Checking", balances.checking],
-    ["Savings", balances.savings],
-    ["Investing", balances.investing],
-  ];
+const ACCOUNTS: Array<{ key: keyof AccountBalances; label: string; icon: string }> = [
+  { key: "checking", label: "Checking", icon: "💳" },
+  { key: "savings", label: "Savings", icon: "🏦" },
+  { key: "investing", label: "Investing", icon: "📈" },
+];
 
+export function AccountBalancesCard({ balances }: AccountBalancesCardProps) {
   return (
-    <div className="card">
-      <div className="section-header">
-        <h2>Balances by Account</h2>
+    <div className="accounts-panel">
+      <div className="accounts-panel__title">Balances by Account</div>
+      <div className="accounts-row">
+        {ACCOUNTS.map(({ key, label, icon }) => (
+          <div className={`account-tile account-tile--${key}`} key={key}>
+            <span className="account-tile__label">
+              <span className="account-tile__icon" aria-hidden="true">
+                {icon}
+              </span>
+              {label}
+            </span>
+            <span className="account-tile__value">{formatCurrency(balances[key])}</span>
+          </div>
+        ))}
       </div>
-      {rows.map(([label, value]) => (
-        <div
-          key={label}
-          style={{ display: "flex", justifyContent: "space-between", padding: "10px 0" }}
-        >
-          <span>{label}</span>
-          <strong>{formatCurrency(value)}</strong>
-        </div>
-      ))}
     </div>
   );
 }

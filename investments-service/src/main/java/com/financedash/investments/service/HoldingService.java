@@ -44,15 +44,18 @@ public class HoldingService {
     private final HoldingRepository holdingRepository;
     private final StockPriceProvider priceProvider;
     private final OutboxWriter outbox;
+    private final NewsRefreshPublisher newsRefreshPublisher;
     private final Clock clock;
 
     public HoldingService(HoldingRepository holdingRepository,
                           StockPriceProvider priceProvider,
                           OutboxWriter outbox,
+                          NewsRefreshPublisher newsRefreshPublisher,
                           Clock clock) {
         this.holdingRepository = holdingRepository;
         this.priceProvider = priceProvider;
         this.outbox = outbox;
+        this.newsRefreshPublisher = newsRefreshPublisher;
         this.clock = clock;
     }
 
@@ -100,8 +103,9 @@ public class HoldingService {
             throw new InvalidInvestmentException("Amount is too small to buy a share at the current price");
         }
 
-        Holding h = holdingRepository.findFirstByStockSymbolAndStatus(symbol, HoldingStatus.OPEN)
-                .orElseGet(() -> new Holding(symbol));
+        var existing = holdingRepository.findFirstByStockSymbolAndStatus(symbol, HoldingStatus.OPEN);
+        boolean newSymbol = existing.isEmpty();
+        Holding h = existing.orElseGet(() -> new Holding(symbol));
 
         h.setQuantity(Precision.quantity(nz(h.getQuantity()).add(shares)));
         h.setCostBasis(Precision.money(nz(h.getCostBasis()).add(request.amount())));
@@ -122,6 +126,10 @@ public class HoldingService {
                 eventId, InvestmentEventType.FUND.name(), request.sourceAccount().name(),
                 Precision.money(request.amount()), date));
         emitSnapshot();
+        if (newSymbol) {
+            // The held-symbol set grew → refresh the news feed so the new holding is represented.
+            newsRefreshPublisher.requestRebuild();
+        }
         return HoldingResponse.from(h);
     }
 
@@ -171,6 +179,10 @@ public class HoldingService {
         outbox.enqueueCashLeg(CashLegCommand.of(
                 eventId, InvestmentEventType.CASH_OUT.name(), CashAccount.SAVINGS.name(), amount, date));
         emitSnapshot();
+        if (full) {
+            // The held-symbol set shrank → refresh so the closed holding's news drops out.
+            newsRefreshPublisher.requestRebuild();
+        }
         return HoldingResponse.from(h);
     }
 

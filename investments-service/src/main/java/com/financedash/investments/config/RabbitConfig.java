@@ -82,4 +82,22 @@ public class RabbitConfig {
         return BindingBuilder.bind(priceRefreshDlq()).to(priceDlx())
                 .with(InvestmentsMessaging.PRICE_REFRESH_ROUTING_KEY);
     }
+
+    // --- intra-service news-refresh trigger (no DLQ; best-effort) ---
+
+    @Bean
+    public DirectExchange newsExchange() {
+        return new DirectExchange(InvestmentsMessaging.NEWS_EXCHANGE, true, false);
+    }
+
+    @Bean
+    public Queue newsRefreshQueue() {
+        return QueueBuilder.durable(InvestmentsMessaging.NEWS_REFRESH_QUEUE).build();
+    }
+
+    @Bean
+    public Binding newsRefreshBinding() {
+        return BindingBuilder.bind(newsRefreshQueue()).to(newsExchange())
+                .with(InvestmentsMessaging.NEWS_REFRESH_ROUTING_KEY);
+    }
 }

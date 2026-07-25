@@ -39,4 +39,15 @@ public class PricingConfig {
             RateLimiter providerRateLimiter) {
         return new FinnhubProvider(finnhubRestClient, apiKey, providerRateLimiter);
     }
+
+    /** News shares the same RestClient and rate limiter as quotes (one Finnhub quota). */
+    @Bean
+    public com.financedash.investments.provider.StockNewsProvider stockNewsProvider(
+            RestClient finnhubRestClient,
+            @Value("${finnhub.api-key:}") String apiKey,
+            RateLimiter providerRateLimiter,
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
+        return new com.financedash.investments.provider.FinnhubNewsProvider(
+                finnhubRestClient, apiKey, providerRateLimiter, objectMapper);
+    }
 }
