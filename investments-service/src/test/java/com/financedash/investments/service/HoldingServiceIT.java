@@ -63,6 +63,8 @@ class HoldingServiceIT extends AbstractContainersTest {
     private OutboxRepository outboxRepository;
     @MockBean
     private StockPriceProvider provider;
+    @MockBean
+    private NewsRefreshPublisher newsRefreshPublisher;
 
     @BeforeEach
     void clean() {
@@ -214,5 +216,41 @@ class HoldingServiceIT extends AbstractContainersTest {
         assertThat(s.totalNetInvested()).isEqualByComparingTo("150.00");
         assertThat(s.totalCurrentValue()).isEqualByComparingTo("150.00");
         assertThat(s.positionChangePct()).isEqualByComparingTo("0.00");
+    }
+
+    // --- news-refresh triggers on held-set changes ---
+
+    @Test
+    void newSymbolBuyTriggersNewsRefresh() {
+        quoteReturns("10.00");
+        service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null));
+        org.mockito.Mockito.verify(newsRefreshPublisher, org.mockito.Mockito.times(1)).requestRebuild();
+    }
+
+    @Test
+    void mergingBuyDoesNotTriggerNewsRefresh() {
+        quoteReturns("10.00");
+        service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)); // new
+        org.mockito.Mockito.clearInvocations(newsRefreshPublisher);
+        service.buy(new BuyRequest("AAPL", new BigDecimal("50.00"), CashAccount.SAVINGS, null));    // merge
+        org.mockito.Mockito.verify(newsRefreshPublisher, org.mockito.Mockito.never()).requestRebuild();
+    }
+
+    @Test
+    void fullCashOutTriggersNewsRefresh() {
+        quoteReturns("10.00");
+        String id = service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
+        org.mockito.Mockito.clearInvocations(newsRefreshPublisher);
+        service.cashOut(id, new CashOutRequest(new BigDecimal("100.00"))); // full close
+        org.mockito.Mockito.verify(newsRefreshPublisher, org.mockito.Mockito.times(1)).requestRebuild();
+    }
+
+    @Test
+    void partialCashOutDoesNotTriggerNewsRefresh() {
+        quoteReturns("10.00");
+        String id = service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
+        org.mockito.Mockito.clearInvocations(newsRefreshPublisher);
+        service.cashOut(id, new CashOutRequest(new BigDecimal("40.00"))); // partial
+        org.mockito.Mockito.verify(newsRefreshPublisher, org.mockito.Mockito.never()).requestRebuild();
     }
 }

@@ -25,5 +25,11 @@ public final class InvestmentsMessaging {
     public static final String PRICE_REFRESH_DLQ = "price.refresh.dlq";
     public static final String PRICE_DLX = "price.dlx";
 
+    // Intra-service news-refresh trigger (best-effort; no DLQ — a lost/failed rebuild self-heals
+    // at the next 4h tick).
+    public static final String NEWS_EXCHANGE = "news.exchange";
+    public static final String NEWS_REFRESH_ROUTING_KEY = "news.refresh";
+    public static final String NEWS_REFRESH_QUEUE = "news.refresh";
+
     private InvestmentsMessaging() {}
 }
