@@ -1,0 +1,40 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: investments-service
+  data:
+    mongodb:
+      uri: ${MONGO_URI:mongodb://localhost:27017/investments}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        # Price-refresh failures retry in-process, then dead-letter (→ STALE) on exhaustion.
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: ${PRICE_RETRY_MAX_ATTEMPTS:3}
+          initial-interval: ${PRICE_RETRY_INITIAL_INTERVAL:1s}
+          multiplier: 2
+          max-interval: 10s
+
+finnhub:
+  # Free tier: 60 calls/min. Key is required in real runs; tests point base-url at WireMock.
+  base-url: ${FINNHUB_BASE_URL:https://finnhub.io/api/v1}
+  api-key: ${FINNHUB_API_KEY:}
+
+pricing:
+  # Periodic refresh cadence and the token-bucket that governs provider throughput.
+  refresh-cron: ${PRICE_REFRESH_CRON:0 */15 * * * *}   # every 15 minutes
+  rate-limit-per-minute: ${PRICE_RATE_LIMIT_PER_MINUTE:50}
+  # Skip re-enqueueing a symbol whose price is fresher than this (minutes).
+  freshness-window-minutes: ${PRICE_FRESHNESS_WINDOW_MINUTES:14}
+
+# Outbox relay: how often to sweep unpublished messages to the broker.
+outbox:
+  relay-interval-ms: ${OUTBOX_RELAY_INTERVAL_MS:2000}

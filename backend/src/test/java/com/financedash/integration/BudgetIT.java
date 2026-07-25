@@ -33,6 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
+// No broker in this test; keep the investment message listeners from trying to connect.
+@org.springframework.test.context.TestPropertySource(
+        properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 class BudgetIT extends AbstractPostgresContainerTest {
 
     @Autowired

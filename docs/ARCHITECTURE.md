@@ -47,17 +47,21 @@ instead — see `VITE_API_PROXY_TARGET` to override.
 `backend/src/main/java/com/financedash/`
 ```
 domain/       AccountType, TransactionType, Category (enums),
-              Transaction (entity), Budget (entity)
-repository/   TransactionRepository, BudgetRepository (Spring Data)
+              Transaction, Budget, Investment, InvestmentEvent (entities),
+              InvestmentStatus, InvestmentEventType (enums)
+repository/   TransactionRepository, BudgetRepository,
+              InvestmentRepository, InvestmentEventRepository (Spring Data)
 dto/          TransactionRequest/Response, BalanceSummaryResponse, AccountBalances,
               BudgetRequest/Response, BudgetProgressResponse,
+              InvestmentRequest/UpdateRequest/CashOutRequest/Response/SummaryResponse,
               TimeRange, Period (shared range→window resolver), ErrorResponse
-service/      TransactionService (CRUD + cross-field validation),
-              BalanceService (metric formulas),
-              BudgetService (CRUD + per-period spend computation)
-controller/   TransactionController, BalanceController, BudgetController
+service/      TransactionService (CRUD + cross-field validation; rejects INVESTING),
+              BalanceService (metrics; folds investment events into cash balances),
+              BudgetService (CRUD + per-period spend),
+              InvestmentService (holdings CRUD + cash-out + derived position change)
+controller/   TransactionController, BalanceController, BudgetController, InvestmentController
 exception/    ResourceNotFoundException, InvalidTransactionException,
-              GlobalExceptionHandler (@RestControllerAdvice)
+              InvalidInvestmentException, GlobalExceptionHandler (@RestControllerAdvice)
 config/       WebConfig (CORS for the frontend origin),
               JpaConfig (@EnableJpaAuditing)
 ```
@@ -98,9 +102,11 @@ components/
   transactions/              TransactionTable, TransactionRow, TransactionFilters,
                             TransactionFormDrawer (create/edit — the field set
                             adapts to transactionType), DeleteConfirmDialog
+  investments/               InvestmentTable, InvestmentRow, InvestmentFormDrawer
+                            (add/edit), CashOutDialog
   common/                   Button, Select, TextField, CurrencyInput, EmptyState
-pages/                      DashboardPage, TransactionsPage
-App.tsx                     react-router: "/" → Dashboard, "/transactions" → Transactions
+pages/                      DashboardPage, TransactionsPage, InvestmentsPage
+App.tsx                     react-router: "/" → Dashboard, "/transactions", "/investments"
 ```
 
 Styling: `styles/tokens.css` (CSS custom properties, with a

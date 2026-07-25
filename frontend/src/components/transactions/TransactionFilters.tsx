@@ -1,4 +1,4 @@
-import { ACCOUNT_TYPES, CATEGORIES, type AccountType, type Category } from "../../types/transaction";
+import { TRANSACTION_ACCOUNT_TYPES, CATEGORIES, type AccountType, type Category } from "../../types/transaction";
 import { formatEnumLabel } from "../../lib/format";
 
 export interface TransactionFilterValues {
@@ -21,7 +21,7 @@ export function TransactionFilters({ value, onChange }: TransactionFiltersProps)
         }
       >
         <option value="">All accounts</option>
-        {ACCOUNT_TYPES.map((type) => (
+        {TRANSACTION_ACCOUNT_TYPES.map((type) => (
           <option key={type} value={type}>
             {formatEnumLabel(type)}
           </option>

@@ -3,14 +3,16 @@ interface CurrencyInputProps {
   value: number | "";
   onChange: (value: number | "") => void;
   required?: boolean;
+  id?: string;
 }
 
-export function CurrencyInput({ label, value, onChange, required }: CurrencyInputProps) {
+export function CurrencyInput({ label, value, onChange, required, id }: CurrencyInputProps) {
+  const fieldId = id ?? label.toLowerCase().replace(/\s+/g, "-");
   return (
     <div className="field">
-      <label htmlFor="amount">{label}</label>
+      <label htmlFor={fieldId}>{label}</label>
       <input
-        id="amount"
+        id={fieldId}
         type="number"
         step="0.01"
         min="0.01"

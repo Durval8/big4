@@ -34,6 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
+// No broker in this test; keep the investment message listeners from trying to connect.
+@org.springframework.test.context.TestPropertySource(
+        properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 class FinanceDashApplicationIT extends AbstractPostgresContainerTest {
 
     @Autowired
@@ -128,13 +131,12 @@ class FinanceDashApplicationIT extends AbstractPostgresContainerTest {
 
     @Test
     void balancesReflectWholeLedger() throws Exception {
+        // Investing lives in the investments service now; with no valuation snapshot, investing = 0.
         LocalDate d = LocalDate.of(2021, 6, 1);
         create(tx("Opening", "1000.00", d, AccountType.CHECKING, null, null, TransactionType.ADJUSTMENT));
         create(tx("Salary", "3000.00", d, AccountType.CHECKING, null, Category.SALARY, TransactionType.INCOME));
         create(tx("Groceries", "200.00", d, AccountType.CHECKING, null, Category.GROCERIES, TransactionType.EXPENSE));
         create(tx("To savings", "500.00", d, AccountType.CHECKING, AccountType.SAVINGS, null, TransactionType.TRANSFER));
-        create(tx("To brokerage", "400.00", d, AccountType.CHECKING, AccountType.INVESTING, null, TransactionType.TRANSFER));
-        create(tx("Withdraw", "100.00", d, AccountType.INVESTING, AccountType.CHECKING, null, TransactionType.TRANSFER));
 
         MvcResult result = mockMvc.perform(get("/api/balances").param("range", "ALL"))
                 .andExpect(status().isOk())
@@ -143,13 +145,23 @@ class FinanceDashApplicationIT extends AbstractPostgresContainerTest {
         BalanceSummaryResponse s = objectMapper.readValue(
                 result.getResponse().getContentAsString(), BalanceSummaryResponse.class);
 
-        assertThat(s.accountBalances().checking()).isEqualByComparingTo("3000.00");
+        assertThat(s.accountBalances().checking()).isEqualByComparingTo("3300.00"); // 1000+3000−200−500
         assertThat(s.accountBalances().savings()).isEqualByComparingTo("500.00");
-        assertThat(s.accountBalances().investing()).isEqualByComparingTo("300.00");
+        assertThat(s.accountBalances().investing()).isEqualByComparingTo("0");       // no holdings
         assertThat(s.netWorth()).isEqualByComparingTo("3800.00");
         assertThat(s.netSpending()).isEqualByComparingTo("200.00");
         assertThat(s.spending()).isEqualByComparingTo("700.00");
-        assertThat(s.netInvestment()).isEqualByComparingTo("300.00");
+        assertThat(s.netInvestment()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void transferToInvestingIsRejected() throws Exception {
+        TransactionRequest bad = tx("bad", "50.00", LocalDate.of(2021, 1, 1),
+                AccountType.CHECKING, AccountType.INVESTING, null, TransactionType.TRANSFER);
+        mockMvc.perform(post("/api/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(bad)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

@@ -1,13 +1,13 @@
 # Testing
 
-The backend has a layered test suite (62 tests). Tests are split by cost so the
+The backend has a layered test suite (117 tests). Tests are split by cost so the
 fast ones run on every `mvn test` and the Docker-dependent ones run on
 `mvn verify`.
 
-| Command      | Runs                                    | Needs Docker? |
-|--------------|------------------------------------------|---------------|
-| `mvn test`   | Unit + web-slice tests (`*Test`) — 51    | No            |
-| `mvn verify` | Everything, incl. integration (`*IT`) — 62 | Yes         |
+| Command      | Runs                                     | Needs Docker? |
+|--------------|-------------------------------------------|---------------|
+| `mvn test`   | Unit + web-slice tests (`*Test`) — 97     | No            |
+| `mvn verify` | Everything, incl. integration (`*IT`) — 117 | Yes         |
 
 The split is done with the Surefire (`*Test`) / Failsafe (`*IT`) plugins in
 `backend/pom.xml`.
@@ -15,17 +15,22 @@ The split is done with the Surefire (`*Test`) / Failsafe (`*IT`) plugins in
 ## Layers
 
 ### Unit tests (Mockito, no Spring context) — fast
-- **`TransactionServiceTest`** — every cross-field validation rule and its expected failure (category required/forbidden per type, TRANSFER destination required and distinct, linked-account forbidden for non-transfers), CRUD delegation, `findAll` filter-query routing, and the not-found paths for `findById`/`update`/`delete`.
-- **`BalanceServiceTest`** — the metric formulas in isolation (repository mocked, so the balance/period lists are handed in directly). Covers empty ledger, adjustment-excluded-from-flows, income/expense, savings vs. investing transfers, investing withdrawals, the stock-vs-flow distinction (net worth uses the up-to-date ledger while flows use the in-period ledger), and a full worked scenario.
-- **`TimeRangeTest`** — `WEEK`/`MONTH`/`YEAR`/`ALL` window resolution against a fixed date.
+- **`TransactionServiceTest`** — cross-field validation rules and expected failures (category per type, TRANSFER destination required/distinct, non-transfer linked-account forbidden, **INVESTING rejected** as account/linked), CRUD delegation, `findAll` filter routing, not-found paths.
+- **`BalanceServiceTest`** — metric formulas in isolation (repos mocked): empty ledger, adjustment-excluded-from-flows, income/expense, transfer-to-savings, the **investment-event fold-in** (fund debits source, cash-out credits savings, mark-to-market raises net worth), stock-vs-flow net worth, and a full worked scenario.
+- **`BudgetServiceTest`** — validation, and the spent-computation decisions (expenses only, category matching, over-budget negative remaining).
+- **`InvestmentServiceTest`** — source-account validation, new vs merged holding, mark-to-market **position change (+50% / −20%)**, partial vs full cash-out (→ `CASHED_OUT`, pct null), cash-out-exceeds rejection, summary aggregation.
+- **`TimeRangeTest` / `PeriodTest`** — window resolution and the shared `range`/`from`/`to` resolver.
 
 ### Web-slice tests (`@WebMvcTest`, mocked services) — fast, no DB
-- **`TransactionControllerTest`** — HTTP status codes (201/200/204/404), JSON contract, Bean Validation 400s (blank description, non-positive amount, missing required enum), service-thrown cross-field 400s, and filter-param pass-through.
-- **`BalanceControllerTest`** — response JSON shape and the `range` vs `from`/`to` param resolution (including `range=ALL` → epoch and the default-to-last-month behavior), asserted via argument captors.
+- **`TransactionControllerTest`** — status codes, JSON contract, Bean-Validation and service-thrown 400s (incl. malformed/invalid-enum bodies), filter pass-through.
+- **`BalanceControllerTest`** — response shape and `range` vs `from`/`to` resolution via argument captors.
+- **`BudgetControllerTest`** / **`InvestmentControllerTest`** — HTTP contract + validation 400s for each resource.
 
 ### Integration tests (`@SpringBootTest` / `@DataJpaTest` + Testcontainers Postgres) — need Docker
-- **`TransactionRepositoryIT`** — the Spring Data derived queries against real Postgres: `Between` inclusivity on both bounds, `date DESC, id DESC` ordering, the optional account/account+category filters, `LessThanEqual` boundary, and that auditing timestamps get populated.
-- **`FinanceDashApplicationIT`** — full stack through MockMvc + real Postgres: the CRUD lifecycle (create → get → update → delete → 404), validation rejections end-to-end, newest-first listing, and the worked-example balance scenario asserting all four metrics and the three account balances.
+- **`TransactionRepositoryIT`** — derived queries against real Postgres: `Between` inclusivity, `date DESC, id DESC` ordering, filters, `LessThanEqual` boundary, auditing timestamps.
+- **`FinanceDashApplicationIT`** — full-stack CRUD, validation rejections, newest-first listing, worked-example balances, and INVESTING-transfer rejection.
+- **`BudgetIT`** — CRUD + progress, proving period-scoping against real Postgres.
+- **`InvestmentIT`** — full lifecycle: buy folds into balances, mark-to-market position change, partial + full cash-out to savings, duplicate-symbol merge, cash-out-exceeds rejection.
 
 ## Notes
 
