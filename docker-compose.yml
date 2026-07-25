@@ -15,6 +15,32 @@ services:
       timeout: 5s
       retries: 10
 
+  mongodb:
+    image: mongo:7
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build: ./backend
     environment:
@@ -23,21 +49,61 @@ services:
       DB_NAME: ${POSTGRES_DB:-financedash}
       DB_USER: ${POSTGRES_USER:-financedash}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-financedash}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  investments-service:
+    build: ./investments-service
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/investments
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      FINNHUB_BASE_URL: ${FINNHUB_BASE_URL:-https://finnhub.io/api/v1}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      PRICE_REFRESH_CRON: ${PRICE_REFRESH_CRON:-0 */15 * * * *}
+      PRICE_FRESHNESS_WINDOW_MINUTES: ${PRICE_FRESHNESS_WINDOW_MINUTES:-14}
+    ports:
+      - "${INVESTMENTS_PORT:-8081}:8081"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   frontend:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+        # Empty = relative URLs, so API calls hit whatever origin serves the page (the gateway).
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     depends_on:
       - backend
+      - investments-service
+
+  gateway:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${GATEWAY_PORT:-8090}:80"
+    depends_on:
+      - backend
+      - investments-service
+      - frontend
 
 volumes:
   postgres_data:
+  mongo_data:

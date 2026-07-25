@@ -6,9 +6,10 @@ interface InvestmentTableProps {
   investments: Investment[];
   onEdit: (investment: Investment) => void;
   onCashOut: (investment: Investment) => void;
+  onSetPrice: (investment: Investment) => void;
 }
 
-export function InvestmentTable({ investments, onEdit, onCashOut }: InvestmentTableProps) {
+export function InvestmentTable({ investments, onEdit, onCashOut, onSetPrice }: InvestmentTableProps) {
   if (investments.length === 0) {
     return <EmptyState message="No investments yet. Add one to start tracking a position." />;
   }
@@ -18,8 +19,10 @@ export function InvestmentTable({ investments, onEdit, onCashOut }: InvestmentTa
       <thead>
         <tr>
           <th>Stock</th>
-          <th>Invested</th>
-          <th>Current position</th>
+          <th>Shares</th>
+          <th>Avg cost</th>
+          <th>Price</th>
+          <th>Value</th>
           <th>Change</th>
           <th>Status</th>
           <th></th>
@@ -27,7 +30,13 @@ export function InvestmentTable({ investments, onEdit, onCashOut }: InvestmentTa
       </thead>
       <tbody>
         {investments.map((inv) => (
-          <InvestmentRow key={inv.id} investment={inv} onEdit={onEdit} onCashOut={onCashOut} />
+          <InvestmentRow
+            key={inv.id}
+            investment={inv}
+            onEdit={onEdit}
+            onCashOut={onCashOut}
+            onSetPrice={onSetPrice}
+          />
         ))}
       </tbody>
     </table>

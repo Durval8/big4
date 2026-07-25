@@ -18,8 +18,8 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(404, "Not Found", List.of(ex.getMessage())));
     }
 
-    @ExceptionHandler({InvalidTransactionException.class, InvalidInvestmentException.class})
-    public ResponseEntity<ErrorResponse> handleInvalid(RuntimeException ex) {
+    @ExceptionHandler(InvalidTransactionException.class)
+    public ResponseEntity<ErrorResponse> handleInvalid(InvalidTransactionException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(400, "Bad Request", List.of(ex.getMessage())));
     }

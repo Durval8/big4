@@ -3,16 +3,18 @@ import { useInvestments } from "../hooks/useInvestments";
 import { InvestmentTable } from "../components/investments/InvestmentTable";
 import { InvestmentFormDrawer } from "../components/investments/InvestmentFormDrawer";
 import { CashOutDialog } from "../components/investments/CashOutDialog";
+import { ManualPriceDialog } from "../components/investments/ManualPriceDialog";
 import { Button } from "../components/common/Button";
 import { formatCurrency, formatPercent } from "../lib/format";
 import type { Investment } from "../types/investment";
 
 export function InvestmentsPage() {
-  const { investments, summary, loading, error, create, update, cashOut } = useInvestments();
+  const { investments, summary, loading, error, create, update, cashOut, setPrice } = useInvestments();
 
   const [isCreating, setIsCreating] = useState(false);
   const [editing, setEditing] = useState<Investment | null>(null);
   const [cashingOut, setCashingOut] = useState<Investment | null>(null);
+  const [pricing, setPricing] = useState<Investment | null>(null);
 
   const drawerOpen = isCreating || editing !== null;
   const pct = summary?.positionChangePct ?? null;
@@ -49,7 +51,12 @@ export function InvestmentsPage() {
         {loading && investments.length === 0 ? (
           <p>Loading…</p>
         ) : (
-          <InvestmentTable investments={investments} onEdit={setEditing} onCashOut={setCashingOut} />
+          <InvestmentTable
+            investments={investments}
+            onEdit={setEditing}
+            onCashOut={setCashingOut}
+            onSetPrice={setPricing}
+          />
         )}
       </div>
 
@@ -72,6 +79,17 @@ export function InvestmentsPage() {
           onConfirm={async (amount) => {
             await cashOut(cashingOut.id, amount);
             setCashingOut(null);
+          }}
+        />
+      )}
+
+      {pricing && (
+        <ManualPriceDialog
+          investment={pricing}
+          onCancel={() => setPricing(null)}
+          onConfirm={async (price) => {
+            await setPrice(pricing.id, price);
+            setPricing(null);
           }}
         />
       )}

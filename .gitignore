@@ -1,7 +1,8 @@
 .env
 
-# Backend
+# Backend / services
 backend/target/
+investments-service/target/
 
 # Frontend
 frontend/node_modules/

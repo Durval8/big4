@@ -1,16 +1,15 @@
 package com.financedash.service;
 
 import com.financedash.domain.AccountType;
-import com.financedash.domain.Investment;
-import com.financedash.domain.InvestmentEvent;
-import com.financedash.domain.InvestmentEventType;
-import com.financedash.domain.InvestmentStatus;
+import com.financedash.domain.CashLegType;
+import com.financedash.domain.InvestmentCashFlow;
+import com.financedash.domain.InvestmentValuation;
 import com.financedash.domain.Transaction;
 import com.financedash.domain.TransactionType;
 import com.financedash.dto.AccountBalances;
 import com.financedash.dto.BalanceSummaryResponse;
-import com.financedash.repository.InvestmentEventRepository;
-import com.financedash.repository.InvestmentRepository;
+import com.financedash.repository.InvestmentCashFlowRepository;
+import com.financedash.repository.InvestmentValuationRepository;
 import com.financedash.repository.TransactionRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -20,42 +19,43 @@ import org.springframework.stereotype.Service;
 /**
  * Implements the dashboard metrics.
  *
- * <p>Investments are their own ledger: buys/cash-outs are {@link InvestmentEvent}s that
- * this service folds into the cash-account balances (no rows exist in {@code transactions}
- * for investing). The INVESTING balance is a reflection of the investment dashboard —
- * the sum of open holdings' current value — and, being a mark-to-market figure with no
- * history, is <b>always current</b> regardless of the selected period (documented v1
- * simplification). Cash balances and flows stay as-of the period.
+ * <p>Investing data now lives in the investments service and reaches the backend only as messages,
+ * projected into two local tables: {@code investment_cash_flow} (buys/cash-outs) and a singleton
+ * {@code investment_valuation} (the current holdings value). This service folds the cash flows into
+ * the CHECKING/SAVINGS balances (no rows exist in {@code transactions} for investing) and reads the
+ * INVESTING balance straight from the valuation snapshot — a shallow copy that is <b>always
+ * current</b> regardless of the selected period (documented v1 simplification). Cash balances and
+ * flows stay as-of the period.
  */
 @Service
 public class BalanceService {
 
     private final TransactionRepository transactionRepository;
-    private final InvestmentRepository investmentRepository;
-    private final InvestmentEventRepository investmentEventRepository;
+    private final InvestmentCashFlowRepository cashFlowRepository;
+    private final InvestmentValuationRepository valuationRepository;
 
     public BalanceService(TransactionRepository transactionRepository,
-                          InvestmentRepository investmentRepository,
-                          InvestmentEventRepository investmentEventRepository) {
+                          InvestmentCashFlowRepository cashFlowRepository,
+                          InvestmentValuationRepository valuationRepository) {
         this.transactionRepository = transactionRepository;
-        this.investmentRepository = investmentRepository;
-        this.investmentEventRepository = investmentEventRepository;
+        this.cashFlowRepository = cashFlowRepository;
+        this.valuationRepository = valuationRepository;
     }
 
     public BalanceSummaryResponse summarize(LocalDate from, LocalDate to) {
         List<Transaction> upToDate = transactionRepository.findByTransactionDateLessThanEqual(to);
         List<Transaction> inPeriod = transactionRepository
                 .findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(from, to);
-        List<InvestmentEvent> eventsUpToDate = investmentEventRepository.findByEventDateLessThanEqual(to);
-        List<InvestmentEvent> eventsInPeriod = investmentEventRepository.findByEventDateBetween(from, to);
+        List<InvestmentCashFlow> flowsUpToDate = cashFlowRepository.findByFlowDateLessThanEqual(to);
+        List<InvestmentCashFlow> flowsInPeriod = cashFlowRepository.findByFlowDateBetween(from, to);
 
         // Cash accounts: transactions minus funds sourced from them, plus cash-outs (which land in SAVINGS).
-        BigDecimal checking = cashBalance(upToDate, eventsUpToDate, AccountType.CHECKING);
-        BigDecimal savings = cashBalance(upToDate, eventsUpToDate, AccountType.SAVINGS);
-        // INVESTING = reflection of the investment dashboard (always current value).
-        BigDecimal investing = investmentRepository.findByStatus(InvestmentStatus.OPEN).stream()
-                .map(Investment::getCurrentValue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal checking = cashBalance(upToDate, flowsUpToDate, AccountType.CHECKING);
+        BigDecimal savings = cashBalance(upToDate, flowsUpToDate, AccountType.SAVINGS);
+        // INVESTING = shallow copy of the investments service's current net value (ZERO until first snapshot).
+        BigDecimal investing = valuationRepository.findById(InvestmentValuation.SINGLETON_ID)
+                .map(InvestmentValuation::getNetValue)
+                .orElse(BigDecimal.ZERO);
         BigDecimal netWorth = checking.add(savings).add(investing);
 
         BigDecimal expenses = sumWhere(inPeriod, t -> t.getTransactionType() == TransactionType.EXPENSE);
@@ -66,8 +66,8 @@ public class BalanceService {
         BigDecimal spending = expenses.add(transfersToSavings);
         BigDecimal netSpending = expenses;
         // Net new money into investments over the period.
-        BigDecimal netInvestment = sumEvents(eventsInPeriod, InvestmentEventType.FUND)
-                .subtract(sumEvents(eventsInPeriod, InvestmentEventType.CASH_OUT));
+        BigDecimal netInvestment = sumFlows(flowsInPeriod, CashLegType.FUND)
+                .subtract(sumFlows(flowsInPeriod, CashLegType.CASH_OUT));
 
         return new BalanceSummaryResponse(
                 from, to, netWorth, spending, netSpending, netInvestment,
@@ -75,10 +75,10 @@ public class BalanceService {
     }
 
     /**
-     * Balance of a cash account = its transactions ± transfers, minus FUND events sourced
-     * from it, plus CASH_OUT events (which always credit SAVINGS).
+     * Balance of a cash account = its transactions ± transfers, minus FUND flows sourced from it,
+     * plus CASH_OUT flows (which always credit SAVINGS).
      */
-    private BigDecimal cashBalance(List<Transaction> transactions, List<InvestmentEvent> events, AccountType account) {
+    private BigDecimal cashBalance(List<Transaction> transactions, List<InvestmentCashFlow> flows, AccountType account) {
         BigDecimal balance = BigDecimal.ZERO;
         for (Transaction t : transactions) {
             switch (t.getTransactionType()) {
@@ -102,11 +102,11 @@ public class BalanceService {
                 }
             }
         }
-        for (InvestmentEvent e : events) {
-            if (e.getType() == InvestmentEventType.FUND && e.getAccountType() == account) {
-                balance = balance.subtract(e.getAmount());
-            } else if (e.getType() == InvestmentEventType.CASH_OUT && account == AccountType.SAVINGS) {
-                balance = balance.add(e.getAmount());
+        for (InvestmentCashFlow f : flows) {
+            if (f.getType() == CashLegType.FUND && f.getAccountType() == account) {
+                balance = balance.subtract(f.getAmount());
+            } else if (f.getType() == CashLegType.CASH_OUT && account == AccountType.SAVINGS) {
+                balance = balance.add(f.getAmount());
             }
         }
         return balance;
@@ -119,10 +119,10 @@ public class BalanceService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private BigDecimal sumEvents(List<InvestmentEvent> events, InvestmentEventType type) {
-        return events.stream()
-                .filter(e -> e.getType() == type)
-                .map(InvestmentEvent::getAmount)
+    private BigDecimal sumFlows(List<InvestmentCashFlow> flows, CashLegType type) {
+        return flows.stream()
+                .filter(f -> f.getType() == type)
+                .map(InvestmentCashFlow::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

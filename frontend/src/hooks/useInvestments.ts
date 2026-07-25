@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { investmentsApi } from "../api/investments";
 import type {
   Investment,
+  InvestmentCorrectionInput,
   InvestmentInput,
   InvestmentSummary,
-  InvestmentUpdateInput,
 } from "../types/investment";
 
 export function useInvestments() {
@@ -40,7 +40,7 @@ export function useInvestments() {
   );
 
   const update = useCallback(
-    async (id: number, input: InvestmentUpdateInput) => {
+    async (id: string, input: InvestmentCorrectionInput) => {
       await investmentsApi.update(id, input);
       await reload();
     },
@@ -48,20 +48,28 @@ export function useInvestments() {
   );
 
   const cashOut = useCallback(
-    async (id: number, amount: number) => {
+    async (id: string, amount: number) => {
       await investmentsApi.cashOut(id, amount);
       await reload();
     },
     [reload],
   );
 
+  const setPrice = useCallback(
+    async (id: string, price: number) => {
+      await investmentsApi.setPrice(id, price);
+      await reload();
+    },
+    [reload],
+  );
+
   const remove = useCallback(
-    async (id: number) => {
+    async (id: string) => {
       await investmentsApi.remove(id);
       await reload();
     },
     [reload],
   );
 
-  return { investments, summary, loading, error, create, update, cashOut, remove, reload };
+  return { investments, summary, loading, error, create, update, cashOut, setPrice, remove, reload };
 }

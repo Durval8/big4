@@ -34,6 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
+// No broker in this test; keep the investment message listeners from trying to connect.
+@org.springframework.test.context.TestPropertySource(
+        properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 class FinanceDashApplicationIT extends AbstractPostgresContainerTest {
 
     @Autowired
@@ -128,7 +131,7 @@ class FinanceDashApplicationIT extends AbstractPostgresContainerTest {
 
     @Test
     void balancesReflectWholeLedger() throws Exception {
-        // Investing is no longer part of the transaction ledger (covered by InvestmentIT).
+        // Investing lives in the investments service now; with no valuation snapshot, investing = 0.
         LocalDate d = LocalDate.of(2021, 6, 1);
         create(tx("Opening", "1000.00", d, AccountType.CHECKING, null, null, TransactionType.ADJUSTMENT));
         create(tx("Salary", "3000.00", d, AccountType.CHECKING, null, Category.SALARY, TransactionType.INCOME));

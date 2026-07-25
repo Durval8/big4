@@ -22,6 +22,17 @@ export function formatPercent(pct: number | null): string {
   return `${sign}${pct.toFixed(1)}%`;
 }
 
+/** Share quantity: up to 4 decimals, trailing zeros trimmed (e.g. "10", "4.5", "3.3333"). */
+export function formatShares(quantity: number): string {
+  return Number(quantity.toFixed(4)).toString();
+}
+
+/** Price per share to 2 decimals, or "—" when unknown. */
+export function formatPrice(price: number | null): string {
+  if (price == null) return "—";
+  return formatCurrency(price);
+}
+
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
     year: "numeric",

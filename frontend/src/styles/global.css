@@ -254,6 +254,17 @@ select {
   color: var(--color-text-primary);
 }
 
+.pill--warning {
+  background: var(--color-negative);
+  color: #fff;
+}
+
+.field-hint {
+  margin: calc(-1 * var(--space-xs)) 0 var(--space-sm);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
 .amount--negative {
   color: var(--color-negative);
 }
