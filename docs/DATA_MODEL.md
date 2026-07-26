@@ -4,8 +4,13 @@ This is the authoritative reference for the domain model and the balance
 calculations. It supersedes the original planning doc — a few rules were
 tightened during implementation (noted inline as **Refinement**).
 
-Entities: `Transaction` (below), `Budget` ([Entity: Budget](#entity-budget)),
-and `Investment` (its own subsystem — see [docs/INVESTMENTS.md](INVESTMENTS.md)).
+Backend entities: `Transaction` (below) and `Budget` ([Entity: Budget](#entity-budget)).
+**Investing data lives in the investments service** (MongoDB) now — see
+[SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) and [INVESTMENTS_SERVICE.md](INVESTMENTS_SERVICE.md). The backend
+keeps two **message-fed projections** of it, used only for the dashboard:
+`investment_cash_flow` (buys/cash-outs, folded into cash balances and `netInvestment`) and
+`investment_valuation` (a singleton shallow copy of the current investing value, last-write-wins).
+Both are populated by RabbitMQ consumers; the backend never queries the service.
 
 ## Entity: `Transaction`
 
@@ -45,8 +50,8 @@ violation returns **400** via `InvalidTransactionException`.
 ## Balance formula
 
 Cash-account (`CHECKING`/`SAVINGS`) running balance as of date `T`, folding in
-investment cash flows (`FUND` debits its source account; `CASH_OUT` credits
-SAVINGS — see [docs/INVESTMENTS.md](INVESTMENTS.md)):
+investing cash flows from the `investment_cash_flow` projection (`FUND` debits its source account;
+`CASH_OUT` credits SAVINGS — fed by cash-leg messages from the investments service):
 
 ```
 balance(account, T) = Σ INCOME.amount        (accountType = account, date ≤ T)
@@ -54,14 +59,16 @@ balance(account, T) = Σ INCOME.amount        (accountType = account, date ≤ T
                      − Σ EXPENSE.amount       (accountType = account, date ≤ T)
                      − Σ TRANSFER.amount      (accountType = account, date ≤ T)        [outgoing]
                      + Σ TRANSFER.amount      (linkedAccountType = account, date ≤ T)  [incoming]
-                     − Σ FUND.amount          (event source = account, eventDate ≤ T)
-                     + Σ CASH_OUT.amount      (account = SAVINGS, eventDate ≤ T)
+                     − Σ FUND cash-flow.amount     (source account = account, flowDate ≤ T)
+                     + Σ CASH_OUT cash-flow.amount (account = SAVINGS, flowDate ≤ T)
 
-balance(INVESTING) = Σ currentValue of OPEN holdings   (always current — no valuation history)
+balance(INVESTING) = investment_valuation.netValue   (latest snapshot; ZERO before the first)
 ```
 
-Implemented in `BalanceService.cashBalance()`; the INVESTING reflection is read
-from the `Investment` entity.
+Implemented in `BalanceService.cashBalance()`; the INVESTING balance is read from the
+`investment_valuation` singleton (a shallow copy kept current by value-snapshot messages — always
+"now," no valuation history). This is a *stale-but-coherent* number: both the cash flows and the
+value ride the same message stream, so net worth is never internally contradictory.
 
 ## Dashboard metrics
 
@@ -76,16 +83,16 @@ spending(period)      = Σ EXPENSE.amount                                      (
 
 netSpending(period)   = Σ EXPENSE.amount                                      (in period)
 
-netInvestment(period) = Σ FUND.amount     (eventDate in period)
-                       − Σ CASH_OUT.amount (eventDate in period)
+netInvestment(period) = Σ FUND cash-flow.amount     (flowDate in period)
+                       − Σ CASH_OUT cash-flow.amount (flowDate in period)
 ```
 
 In words: **spending** = everything that left checking for expenses *or* for
 savings; **net spending** = expenses only; **net investment** = net cash moved
-into investments over the period (buys minus cash-outs — from the `Investment`
-subsystem, not transactions). `balance(INVESTING)` is the current holdings value
-regardless of the selected period (documented simplification — no valuation
-history yet).
+into investments over the period (buys minus cash-outs — from the
+`investment_cash_flow` projection, not transactions). `balance(INVESTING)` is the
+current holdings value regardless of the selected period (documented simplification
+— no valuation history yet).
 
 Implemented in `BalanceService.summarize()`
 (`backend/src/main/java/com/financedash/service/BalanceService.java`) —

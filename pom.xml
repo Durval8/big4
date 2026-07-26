@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      Aggregator (reactor) only — NOT a shared parent. It lists the two Spring Boot microservices as
+      modules so `mvn` at the repo root builds/tests both in one command, and IDEs import them as a
+      single multi-module project. It deliberately does not centralize dependencies or act as the
+      modules' <parent>: each service keeps its own spring-boot-starter-parent and stays
+      independently buildable and deployable (see docs/INVESTMENTS_SERVICE.md). The frontend is an
+      npm project, not a Maven module.
+    -->
+    <groupId>com.financedash</groupId>
+    <artifactId>finance-dash</artifactId>
+    <version>0.1.0</version>
+    <packaging>pom</packaging>
+    <name>finance-dash (aggregator)</name>
+    <description>Reactor aggregating the backend and investments-service microservices</description>
+
+    <modules>
+        <module>backend</module>
+        <module>investments-service</module>
+    </modules>
+</project>

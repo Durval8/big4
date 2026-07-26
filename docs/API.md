@@ -1,7 +1,12 @@
 # API Reference
 
-Base URL: `http://localhost:8080/api` (or whatever `BACKEND_PORT` is set to).
-All bodies are JSON. Errors follow a consistent shape (see [Errors](#errors)).
+Everything is behind the **gateway** at `http://localhost:8090` (single origin). The gateway routes
+`/api/investments/**` to the investments service and `/api/**` to the backend — see
+[SYSTEM_DESIGN.md](SYSTEM_DESIGN.md#request-routing). All bodies are JSON. Backend and service share
+the same error shape (see [Errors](#errors)).
+
+- **Transactions / Balances / Budgets** → backend
+- **Investments (holdings, summary, news)** → investments service
 
 ## Transactions
 
@@ -111,40 +116,56 @@ Returns 204, or 404.
 
 ## Investments
 
-Stock holdings, separate from the transaction ledger. Buys/cash-outs are recorded
-as investment events that fold into cash balances (see [docs/INVESTMENTS.md](INVESTMENTS.md)).
+Served by the **investments service** (MongoDB). Holdings are **share-based** and priced from
+Finnhub; buys/cash-outs reach the backend as RabbitMQ messages that fold into cash balances (see
+[SYSTEM_DESIGN.md](SYSTEM_DESIGN.md), [INVESTMENT_PRICING.md](INVESTMENT_PRICING.md)). IDs are Mongo
+strings.
 
 ### `GET /api/investments`
-All holdings (symbol-ordered), as `InvestmentResponse[]`:
+All holdings (symbol-ordered), as `HoldingResponse[]`:
 ```json
-[{ "id": 1, "stockSymbol": "AAPL", "currentValue": 350.00, "netCashInvested": 150.00,
-   "positionChangePct": 133.33, "status": "OPEN", "createdAt": "…", "updatedAt": "…" }]
+[{ "id": "6a64…", "stockSymbol": "AAPL", "quantity": 0.300282, "avgCost": 333.0203,
+   "latestPrice": 333.0200, "currentValue": 100.00, "netCashInvested": 100.00,
+   "realizedGain": 0.00, "positionChangePct": 0.00, "priceStatus": "OK",
+   "priceAsOf": "…", "status": "OPEN", "createdAt": "…", "updatedAt": "…" }]
 ```
-`positionChangePct` = (currentValue − netCashInvested) / netCashInvested × 100, or
-`null` when netCashInvested ≤ 0.
+`currentValue` = `quantity × latestPrice`; `positionChangePct` = `(latestPrice − avgCost)/avgCost ×
+100` (null when there are no shares or no price). `priceStatus` is `OK` / `STALE` (provider failing,
+last price kept) / `UNRESOLVED` (symbol not recognized — priced by hand, never auto-fetched).
 
 ### `GET /api/investments/summary`
-Totals across OPEN holdings: `{ "totalNetInvested", "totalCurrentValue", "positionChangePct" }`.
+Totals across OPEN holdings: `{ "totalNetInvested", "totalCurrentValue", "totalRealizedGain", "positionChangePct" }`.
 
 ### `GET /api/investments/{id}`
-Single `InvestmentResponse`, or 404.
+Single `HoldingResponse`, or 404.
 
 ### `POST /api/investments`
-Add a holding (a buy). Body: `{ "stockSymbol", "amount", "sourceAccount" }` —
-`amount` debits `sourceAccount` (CHECKING/SAVINGS); adding an existing symbol merges.
-400 if `sourceAccount` is INVESTING, blank symbol, or `amount ≤ 0`. Returns 201.
+Buy by money amount. Body: `{ "stockSymbol", "amount", "sourceAccount", "manualPrice"? }` —
+`shares = amount ÷ price`; `amount` debits `sourceAccount` (CHECKING/SAVINGS); buying an existing
+symbol merges (weighted average cost). `manualPrice` is used **only** for a symbol the provider
+doesn't recognize. Returns 201. **503** if the provider is unavailable (the buy is not recorded);
+400 for a bad account / blank symbol / unrecognized symbol with no `manualPrice`.
 
 ### `PUT /api/investments/{id}`
-Edit: `{ "stockSymbol", "currentValue" }` — rename and/or mark-to-market (no cash moves).
-400 if the holding is cashed out; 404 if missing.
+Correction only: `{ "stockSymbol", "quantity" }` — fix the symbol and/or share count (prices are the
+source of truth, so there's no value edit). 400 if cashed out; 404 if missing.
 
 ### `POST /api/investments/{id}/cash-out`
-Body: `{ "amount" }` (≤ current position) — moves the amount to SAVINGS, reduces the
-position; a fully cashed-out holding becomes `CASHED_OUT` (kept as history). 400 if the
+Body: `{ "amount" }` (≤ current position) — sells that value of shares, moves the proceeds to SAVINGS,
+records realized gain; a fully cashed-out holding becomes `CASHED_OUT` (kept as history). 400 if the
 amount exceeds the position or the holding is already cashed out.
 
+### `POST /api/investments/{id}/price`
+Body: `{ "price" }` — set a manual price for an `UNRESOLVED` holding (the only way it gets valued).
+400 if the holding is resolved (it's priced automatically) or cashed out.
+
 ### `DELETE /api/investments/{id}`
-Removes a holding and its events. Returns 204, or 404.
+Admin-only: removes a holding and re-broadcasts the investing value. Does **not** refund cash (use
+cash-out for that). Returns 204, or 404. Not exposed in the UI.
+
+### `GET /api/investments/news`
+The portfolio news feed: `{ "updatedAt", "items": [{ "symbol", "headline", "summary", "url",
+"source", "publishedAt" }] }` (≤ 7 items). See [INVESTMENT_NEWS.md](INVESTMENT_NEWS.md).
 
 ## Errors
 
@@ -165,15 +186,16 @@ sources produce this same shape:
 
 ## Worked example (verified during implementation)
 
-Four transactions, all on `CHECKING` unless noted:
+Three transactions on `CHECKING`, plus one investment buy:
 1. `ADJUSTMENT` $1,000.00 on 2026-01-01 (opening balance)
 2. `INCOME` $2,000.00 / `SALARY` on 2026-07-01 (paycheck)
 3. `EXPENSE` $175.50 / `GROCERIES` on 2026-07-05
-4. `TRANSFER` $500.00 → `INVESTING` on 2026-07-24
+4. `POST /api/investments` — buy $500.00 of a stock from `CHECKING` on 2026-07-24 (recorded by the
+   investments service; the backend receives a **FUND cash-leg** of $500 and a **value snapshot** of
+   $500).
 
-`GET /api/balances?range=MONTH` (today = 2026-07-24) returns exactly the
-`BalanceSummaryResponse` shown above: `netWorth` includes all four
-transactions ($1000 + $2000 − $175.50 − $500 + $500 = $2824.50, split
-$2324.50 checking / $500 investing); `spending`/`netSpending` = $175.50
-(the expense only, transaction #4 isn't a savings transfer); `netInvestment`
-= $500.00 (the transfer into investing).
+`GET /api/balances?range=MONTH` (today = 2026-07-24) returns exactly the `BalanceSummaryResponse`
+shown above: `netWorth` = $1000 + $2000 − $175.50 − $500 (fund) + $500 (holding value) = **$2824.50**,
+split **$2324.50 checking / $500 investing**; `spending`/`netSpending` = **$175.50** (the expense
+only — a buy is not spending); `netInvestment` = **$500.00** (net cash into investments over the
+period). Net worth is unchanged by the buy itself — cash simply became a holding.

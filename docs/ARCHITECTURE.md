@@ -1,122 +1,118 @@
-# Architecture
+# Architecture (module internals)
+
+The system-level view — services, data stores, routing, messaging, and runtime flows — lives in
+[SYSTEM_DESIGN.md](SYSTEM_DESIGN.md). This doc covers the **internal structure of each module**:
+package/file layouts and the few non-obvious wiring decisions.
 
 ## Stack
 
-| Layer     | Tech                                                  |
-|-----------|--------------------------------------------------------|
-| Backend   | Spring Boot 3.3.2, Java 21, Spring Data JPA, Hibernate |
-| Database  | PostgreSQL 16 (`ddl-auto=update` — no migrations tool yet, see [Follow-ups](#follow-ups)) |
-| Frontend  | React 18 + TypeScript, Vite 5, React Router 6 (no other runtime deps — no state/data-fetching library, just `fetch` + hooks) |
-| Orchestration | Docker Compose — 3 containers (`postgres`, `backend`, `frontend`) |
-| Testing   | JUnit 5, Mockito, MockMvc (Surefire); Testcontainers Postgres (Failsafe) — see [TESTING.md](TESTING.md) |
-
-## Containers (`docker-compose.yml`)
-
-```
-postgres  (postgres:16-alpine)
-  ├─ healthcheck: pg_isready                      ← added during implementation, not in the original plan
-  └─ volume: postgres_data (persists across restarts)
-
-backend   (build: ./backend)
-  ├─ depends_on: postgres (condition: service_healthy)
-  ├─ env: DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD
-  └─ port: 8080
-
-frontend  (build: ./frontend, build-arg VITE_API_BASE_URL)
-  ├─ depends_on: backend
-  └─ port: 5173
-```
-
-**Why the healthcheck was added:** the original plan listed healthchecks as
-"later" (avoid gold-plating). In practice, the backend has no DB-connection
-retry/backoff configured, so without `depends_on: condition: service_healthy`
-it can start before Postgres accepts connections and fail. This one healthcheck
-is load-bearing, not polish.
-
-**Why `VITE_API_BASE_URL` exists:** the frontend's Docker image runs `vite
-preview` (a static build), not the Vite dev server — so there's no dev proxy
-to forward relative `/api/...` calls to the backend. The base URL is baked in
-at *build time* (Dockerfile `ARG`/`ENV`, consumed by `src/api/client.ts` via
-`import.meta.env.VITE_API_BASE_URL`) so the browser calls the backend's
-published port directly. Locally (`npm run dev`), this is unset and Vite's
-`server.proxy` (`vite.config.ts`) forwards `/api` to `http://localhost:8080`
-instead — see `VITE_API_PROXY_TARGET` to override.
+| Layer | Tech |
+|---|---|
+| Backend | Spring Boot 3.3.2, Java 21, Spring Data JPA + Hibernate, Spring AMQP |
+| Investments service | Spring Boot 3.3.2, Java 21, Spring Data MongoDB, Spring AMQP, Spring `RestClient` |
+| Databases | PostgreSQL 16 (backend), MongoDB 7 (investments service) — both `ddl-auto=update` / schema-on-write, no migration tool yet |
+| Messaging | RabbitMQ 3.13 |
+| Gateway | nginx (single-origin reverse proxy) |
+| Frontend | React 18 + TypeScript, Vite 5, React Router 6 (no state/data lib — `fetch` + hooks) |
+| Orchestration | Docker Compose — 7 services (`postgres`, `mongodb`, `rabbitmq`, `backend`, `investments-service`, `frontend`, `gateway`) |
+| Testing | JUnit 5, Mockito, MockMvc, `MockRestServiceServer` (Surefire); Testcontainers Postgres / Mongo / RabbitMQ (Failsafe) — see [TESTING.md](TESTING.md) |
 
 ## Backend package layout
 
 `backend/src/main/java/com/financedash/`
 ```
-domain/       AccountType, TransactionType, Category (enums),
-              Transaction, Budget, Investment, InvestmentEvent (entities),
-              InvestmentStatus, InvestmentEventType (enums)
+domain/       AccountType, TransactionType, Category (enums), Transaction, Budget (entities);
+              CashLegType (enum), InvestmentCashFlow, InvestmentValuation
+                — message-fed projections of investing data (NOT the source of truth)
 repository/   TransactionRepository, BudgetRepository,
-              InvestmentRepository, InvestmentEventRepository (Spring Data)
+              InvestmentCashFlowRepository, InvestmentValuationRepository
 dto/          TransactionRequest/Response, BalanceSummaryResponse, AccountBalances,
-              BudgetRequest/Response, BudgetProgressResponse,
-              InvestmentRequest/UpdateRequest/CashOutRequest/Response/SummaryResponse,
-              TimeRange, Period (shared range→window resolver), ErrorResponse
+              BudgetRequest/Response, BudgetProgressResponse, TimeRange, Period, ErrorResponse
 service/      TransactionService (CRUD + cross-field validation; rejects INVESTING),
-              BalanceService (metrics; folds investment events into cash balances),
-              BudgetService (CRUD + per-period spend),
-              InvestmentService (holdings CRUD + cash-out + derived position change)
-controller/   TransactionController, BalanceController, BudgetController, InvestmentController
-exception/    ResourceNotFoundException, InvalidTransactionException,
-              InvalidInvestmentException, GlobalExceptionHandler (@RestControllerAdvice)
-config/       WebConfig (CORS for the frontend origin),
-              JpaConfig (@EnableJpaAuditing)
+              BalanceService (dashboard metrics; folds the cash-flow projection into cash
+                balances, reads the valuation projection for the INVESTING balance),
+              BudgetService (CRUD + per-period spend)
+controller/   TransactionController, BalanceController, BudgetController
+messaging/    InvestmentsMessaging (mirror of the broker names), CashLegCommand, ValueSnapshot
+                (consumer-side mirror records), InvestmentCashLegConsumer (idempotent),
+              InvestmentValuationConsumer (last-write-wins)
+config/       WebConfig (CORS), JpaConfig (@EnableJpaAuditing), RabbitConfig (exchange/queues/bindings
+                + Jackson message converter)
+exception/    ResourceNotFoundException, InvalidTransactionException, GlobalExceptionHandler
 ```
 
-**Shared period resolution:** `dto/Period.resolve(range, from, to, today)` turns
-the `range`/`from`/`to` query params into a `[from, to]` window. Both
-`BalanceController` and `BudgetController` use it so the Dashboard's balances
-and budgets always reflect the same window.
+The backend **no longer has an `Investment` entity/service/controller** — investing moved to the
+service. What remains is the two projections it consumes over RabbitMQ, which `BalanceService` folds
+into the dashboard exactly as before (same math, message-sourced).
 
-**Why JPA auditing is its own config:** `@EnableJpaAuditing` lives in
-`config/JpaConfig`, not on `FinanceDashApplication`. If it sits on the
-application class, `@WebMvcTest` slices (which don't load JPA) fail trying to
-wire the auditing handler. Keeping it in a separate `@Configuration` means the
-full context picks it up by scanning while the web slice ignores it — see
+**Shared period resolution:** `dto/Period.resolve(range, from, to, today)` turns the query params
+into a `[from, to]` window; `BalanceController` and `BudgetController` both use it so balances and
+budgets share one window.
+
+**Why JPA auditing is its own config:** `@EnableJpaAuditing` lives in `config/JpaConfig`, not on the
+application class — otherwise `@WebMvcTest` slices (no JPA) fail wiring the auditing handler. See
 [TESTING.md](TESTING.md).
-No `Account` or `User` entity — see [Data Model](DATA_MODEL.md#scope-decisions)
-for why.
+
+## Investments service package layout
+
+`investments-service/src/main/java/com/financedash/investments/`
+```
+domain/       Holding (@Document) + HoldingEvent (embedded), HoldingStatus, PriceStatus,
+              InvestmentEventType, CashAccount; OutboxMessage; NewsFeed + NewsItem; Precision
+repository/   HoldingRepository, OutboxRepository, NewsFeedRepository (Spring Data Mongo)
+dto/          BuyRequest, HoldingUpdateRequest, CashOutRequest, ManualPriceRequest,
+              HoldingResponse, SummaryResponse, NewsResponse, ErrorResponse
+provider/     StockPriceProvider + FinnhubProvider (quotes), StockNewsProvider + FinnhubNewsProvider
+                (company-news), NewsArticle, Quote; ProviderException hierarchy
+ratelimit/    RateLimiter (token bucket, injectable clock — the real Finnhub throttle)
+service/      HoldingService (buy/cash-out/correction/manual price; writes outbox; triggers news),
+              OutboxWriter + OutboxRelay (transactional outbox → RabbitMQ),
+              PriceRefreshScheduler/Consumer + StalePriceHandler (the price job),
+              NewsService + NewsSelector (value-weighted draw) + NewsRefreshScheduler/Publisher/Consumer
+controller/   InvestmentController (/api/investments), NewsController (/api/investments/news)
+messaging/    InvestmentsMessaging (canonical broker names) + contract/{CashLegCommand, ValueSnapshot}
+config/       MongoConfig (@EnableMongoAuditing + Clock), RabbitConfig (all exchanges/queues),
+              PricingConfig (RestClient + RateLimiter + provider beans)
+exception/    InvalidInvestmentException, ProviderUnavailableException, ResourceNotFoundException,
+              GlobalExceptionHandler
+```
+
+This service **owns the message contract**; the backend's `messaging/` records mirror it.
 
 ## Frontend structure
 
 `frontend/src/`
 ```
-types/                      transaction.ts (enums + Transaction/BalanceSummary),
-                            budget.ts (Budget/BudgetInput/BudgetProgress)
-api/                        client.ts (fetch wrapper + API_BASE), transactions.ts,
-                            balances.ts, budgets.ts
-hooks/                      useTransactions, useBalances,
-                            useBudgets (progress for range + CRUD + reload)
-lib/format.ts                formatCurrency / formatEnumLabel / formatDate helpers
+types/        transaction.ts, budget.ts, investment.ts (share-based + PriceStatus), news.ts
+api/          client.ts (fetch wrapper; relative base URL), transactions.ts, balances.ts,
+              budgets.ts, investments.ts, news.ts
+hooks/        useTransactions, useBalances, useBudgets, useInvestments, useInvestmentNews
+                (feed + updatedAt polling), useTheme (light/dark, persisted)
+lib/format.ts formatCurrency / formatPercent / formatShares / formatPrice / formatRelativeTime / …
 components/
-  layout/                   AppShell (nav), TimeRangeSelector
-  dashboard/                BalanceCard, BalanceSummaryGrid (the 4 metrics),
-                            AccountBalancesCard (per-account breakdown),
-                            BudgetSection (Budgets on the Dashboard — list + add/
-                            edit/delete under the same time range),
-                            BudgetProgressCard (spent vs value, over-budget bar),
-                            BudgetFormDrawer (name/value/multi-select categories)
-  transactions/              TransactionTable, TransactionRow, TransactionFilters,
-                            TransactionFormDrawer (create/edit — the field set
-                            adapts to transactionType), DeleteConfirmDialog
-  investments/               InvestmentTable, InvestmentRow, InvestmentFormDrawer
-                            (add/edit), CashOutDialog
-  common/                   Button, Select, TextField, CurrencyInput, EmptyState
-pages/                      DashboardPage, TransactionsPage, InvestmentsPage
-App.tsx                     react-router: "/" → Dashboard, "/transactions", "/investments"
+  layout/     AppShell (nav + theme toggle), TimeRangeSelector
+  dashboard/  BalanceCard, BalanceSummaryGrid (the 4 metrics),
+              AccountBalancesCard (prominent grouped accounts panel), BudgetSection,
+              BudgetProgressCard, BudgetFormDrawer
+  transactions/ TransactionTable/Row/Filters, TransactionFormDrawer, DeleteConfirmDialog
+  investments/  InvestmentTable/Row, InvestmentFormDrawer (buy / correction),
+              CashOutDialog, ManualPriceDialog, NewsCard
+  common/     Button, Select, TextField, CurrencyInput, EmptyState
+pages/        DashboardPage, TransactionsPage, InvestmentsPage
 ```
 
-Styling: `styles/tokens.css` (CSS custom properties, with a
-`prefers-color-scheme: dark` override) + `styles/global.css` (component
-classes). No CSS framework/component library — plain CSS chosen to keep the
-Apple-inspired look (system font stack, generous whitespace, soft
-shadows/rounded corners) fully under direct control.
+**Theming:** `styles/tokens.css` defines CSS custom properties for light and dark. Dark applies via
+`:root[data-theme="dark"]`; with no manual choice it still follows `prefers-color-scheme`. An inline
+script in `index.html` applies the saved/OS theme before first paint (no flash); `useTheme` toggles
+and persists it. Plain CSS (`styles/global.css`), no component library.
+
+**Why `VITE_API_BASE_URL` is empty in Docker:** the frontend is served behind the gateway, so it uses
+**relative** `/api/...` URLs against the gateway origin (one host, no CORS). Locally (`npm run dev`),
+Vite's `server.proxy` splits `/api/investments` → `:8081` and `/api` → `:8080` (override via
+`VITE_INVESTMENTS_PROXY_TARGET` / `VITE_API_PROXY_TARGET`).
 
 ## Follow-ups
 
-Deliberately deferred, not forgotten (unchanged from the original plan):
-Spring Security/auth, user-manageable accounts/categories, recurring
-transactions, multi-currency, Flyway migrations, pagination.
+Deferred, not forgotten: Spring Security/auth, user-manageable accounts/categories, recurring
+transactions, multi-currency, valuation history, Flyway/Mongo migrations, pagination, and a
+dynamic-resolver gateway config (see [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md#deployment)).

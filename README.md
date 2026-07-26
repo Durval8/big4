@@ -9,21 +9,23 @@ dashboard); a Spring Boot + **MongoDB** **investments service** (holdings, autom
 pricing); **RabbitMQ** for inter-service messaging; React 18 + TypeScript (Vite)
 frontend; an **nginx gateway** fronting them as one origin; all via Docker Compose.
 
-**Status:** MVP + budgets + investments built. Investments have been **extracted into
-their own service** with its own MongoDB and an automated Finnhub price job, talking to
-the backend only over RabbitMQ (see
-[docs/INVESTMENTS_SERVICE.md](docs/INVESTMENTS_SERVICE.md)). Each module is covered by
-unit, web-slice, and Testcontainers integration tests.
+**Status:** MVP + budgets + investments built. Investments run in **their own service** (MongoDB)
+with an automated **Finnhub price job** and a **portfolio news feed**, talking to the backend only
+over RabbitMQ, behind an nginx gateway; the UI has a **light/dark theme switch**. See
+[docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md). Both modules are covered by unit, web-slice, and
+Testcontainers integration tests.
 
 ## Documentation
 
+- [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) — **start here:** system architecture — topology, services, data ownership, routing, messaging, and runtime flows (with diagrams)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module internals: backend / investments-service / frontend package layouts and wiring
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — entities, enums, invariants, and the exact net worth / spending / net spending / net investment formulas
 - [docs/API.md](docs/API.md) — REST endpoint reference with a worked example
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — container layout, backend/frontend structure, and why a couple of things deviate from the original plan
-- [docs/TESTING.md](docs/TESTING.md) — the backend test suite (unit, web-slice, and Testcontainers integration) and how to run it
-- [docs/INVESTMENTS.md](docs/INVESTMENTS.md) — the original Investments feature: holdings, buy/cash-out, position change, and how it folds into balances
-- [docs/INVESTMENTS_SERVICE.md](docs/INVESTMENTS_SERVICE.md) — **the microservice extraction (built):** Mongo-backed service, RabbitMQ messaging (cash-leg commands + value snapshots), outbox, backend projections, gateway
-- [docs/INVESTMENT_PRICING.md](docs/INVESTMENT_PRICING.md) — **automated pricing (built):** share-based holdings, average-cost position change, and the rate-limited Finnhub refresh job
+- [docs/TESTING.md](docs/TESTING.md) — both modules' test suites (unit, web-slice, Testcontainers) and how to run them
+- [docs/INVESTMENTS_SERVICE.md](docs/INVESTMENTS_SERVICE.md) — the microservice extraction: Mongo-backed service, RabbitMQ messaging (cash-leg commands + value snapshots), outbox, backend projections, gateway
+- [docs/INVESTMENT_PRICING.md](docs/INVESTMENT_PRICING.md) — automated pricing: share-based holdings, average-cost position change, the rate-limited Finnhub refresh job
+- [docs/INVESTMENT_NEWS.md](docs/INVESTMENT_NEWS.md) — the portfolio news feed: Finnhub company-news, the value-weighted stock-draw selection, and its 4h / held-set-change refresh
+- [docs/INVESTMENTS.md](docs/INVESTMENTS.md) — the original (pre-service) Investments feature record
 - [docs/future/STATEMENT_IMPORT.md](docs/future/STATEMENT_IMPORT.md) — **shelved proposal (not built):** import bank-statement PDFs and extract transactions via Claude
 
 In short:
@@ -72,12 +74,18 @@ else `/api` to `http://localhost:8080` (override via `VITE_INVESTMENTS_PROXY_TAR
 ## Tests
 
 Each module has fast unit + web-slice tests (no Docker) and Testcontainers integration
-tests (needs a running Docker daemon):
+tests (needs a running Docker daemon). A root aggregator `pom.xml` makes the two services a
+Maven multi-module build, so one command from the repo root builds/tests both:
+```bash
+mvn test      # both services, fast;  mvn verify  → + all Testcontainers ITs
+```
+Or per module (each stays independently buildable):
 ```bash
 cd backend             && mvn test     # fast;  mvn verify  → + Postgres/RabbitMQ ITs
 cd investments-service && mvn test     # fast;  mvn verify  → + Mongo/RabbitMQ ITs
 ```
-See [docs/TESTING.md](docs/TESTING.md) for the full breakdown.
+The aggregator only lists the modules (reactor) — it doesn't couple their dependencies. See
+[docs/TESTING.md](docs/TESTING.md) for the full breakdown.
 
 ## Out of scope for this MVP
 Authentication, user-manageable accounts/categories, recurring transactions,
