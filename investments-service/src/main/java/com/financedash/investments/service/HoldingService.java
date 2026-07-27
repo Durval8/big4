@@ -98,7 +98,14 @@ public class HoldingService {
         String symbol = normalize(request.stockSymbol());
         PricedSymbol priced = priceForBuy(symbol, request.manualPrice());
 
-        BigDecimal shares = request.amount().divide(priced.price(), Precision.QUANTITY, Precision.ROUNDING);
+        // For recognized symbols, manualPrice means "I actually paid this per share".
+        // Shares derive from the manual price so avgCost reflects the real entry price,
+        // while latestPrice stays the API quote → the difference shows immediately as P&L.
+        BigDecimal buyPrice = (request.manualPrice() != null && priced.status() == PriceStatus.OK)
+                ? Precision.price(request.manualPrice())
+                : priced.price();
+
+        BigDecimal shares = request.amount().divide(buyPrice, Precision.QUANTITY, Precision.ROUNDING);
         if (shares.signum() <= 0) {
             throw new InvalidInvestmentException("Amount is too small to buy a share at the current price");
         }
@@ -119,7 +126,7 @@ public class HoldingService {
         String eventId = newEventId();
         LocalDate date = today();
         h.addEvent(new HoldingEvent(eventId, InvestmentEventType.FUND,
-                Precision.money(request.amount()), shares, priced.price(), request.sourceAccount(), date));
+                Precision.money(request.amount()), shares, buyPrice, request.sourceAccount(), date));
         holdingRepository.save(h);
 
         outbox.enqueueCashLeg(CashLegCommand.of(
