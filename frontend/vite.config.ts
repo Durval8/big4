@@ -19,4 +19,10 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    allowedHosts: ['big4finance.online'],
+  },
+  server: {
+    allowedHosts: ['big4finance.online'],
+  },
 });
