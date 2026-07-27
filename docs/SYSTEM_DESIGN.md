@@ -200,12 +200,36 @@ RNG). Best-effort: a total fetch failure keeps the previous feed. See
 `docker-compose.yml` runs seven services: `postgres`, `mongodb`, `rabbitmq`, `backend`,
 `investments-service`, `frontend`, `gateway`. Health-gated startup order (backend waits for Postgres
 + RabbitMQ; the service waits for Mongo + RabbitMQ). Config via env (`.env`, gitignored) — DB creds,
-broker creds, `FINNHUB_API_KEY`, and the job cadences/knobs. **Open the app at the gateway:
-`http://localhost:8090`.** Run instructions: [README.md](../README.md).
+broker creds, `FINNHUB_API_KEY`, and the job cadences/knobs.
+
+### Production
+
+The production stack is publicly available at **https://big4finance.online** via a Cloudflare
+tunnel. The tunnel points at the nginx gateway on the host. Run with:
+
+```bash
+make build && make up   # images → containers, detached
+```
+
+### Test environment
+
+A local test stack can run alongside production without touching the Cloudflare tunnel. It uses
+the same `docker-compose.yml` but a separate Docker Compose project name (`big4-test`) and
+`.env.test`, which offsets every host-bound port by ~1000. Volumes and networks are namespaced
+separately (`big4-test_*`), so data is completely isolated. RabbitMQ uses a distinct Erlang cookie
+(`RABBITMQ_ERLANG_COOKIE=test-cookie`) to avoid EPMD node collisions when both instances run on
+the same host.
+
+```bash
+make build-test && make up-test   # test images → test containers
+# App available at http://localhost:9090
+```
+
+Full port mapping and all Makefile targets: [README.md](../README.md).
 
 > Operational note: nginx resolves upstream hostnames at startup, so after rebuilding a service
-> container (new IP) the gateway may need `docker compose restart gateway`. A dynamic-resolver
-> config would remove this; not yet done.
+> container (new IP) the gateway may need `docker compose restart gateway` (or
+> `make restart` / `make restart-test`). A dynamic-resolver config would remove this; not yet done.
 
 ## Testing
 

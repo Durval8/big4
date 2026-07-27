@@ -45,7 +45,53 @@ In short:
   total = expenses in those categories over the Dashboard's selected window;
   progress bars show on the Dashboard.
 
-## Run with Docker Compose
+## Live deployment
+
+The app is publicly available at **https://big4finance.online**, served via a Cloudflare tunnel
+pointing at the production Docker Compose stack on the host machine.
+
+## Environments
+
+Two isolated environments can run simultaneously — production (behind the Cloudflare tunnel) and a
+local test instance with shifted ports so they never conflict. Both use the same
+`docker-compose.yml`; isolation is achieved via Docker Compose project namespacing (`-p`) and a
+separate `.env.test` that offsets every host-bound port.
+
+| | Production | Test |
+|---|---|---|
+| Public URL | https://big4finance.online | — |
+| Gateway | host port from `.env` (default 8090) | `9090` |
+| Frontend | host port from `.env` (default 5173) | `6173` |
+| Backend | host port from `.env` (default 8080) | `9080` |
+| Investments | host port from `.env` (default 8081) | `9081` |
+| Postgres | host port from `.env` (default 5432) | `6432` |
+| MongoDB | host port from `.env` (default 27017) | `28017` |
+| RabbitMQ | host port from `.env` (default 5672 / 15672) | `6672 / 16672` |
+| Docker project | `big4` | `big4-test` |
+| Volumes/networks | `big4_*` | `big4-test_*` — fully separate |
+
+Use the `Makefile` targets:
+
+```bash
+# Production (Cloudflare tunnel — uses .env)
+make build   # build images
+make up      # start detached
+make down    # stop
+make logs    # tail logs
+make clean   # stop + wipe volumes (destructive)
+
+# Test environment (browser: http://localhost:9090)
+make build-test
+make up-test
+make down-test
+make logs-test
+make clean-test  # stop + wipe test volumes (destructive)
+```
+
+Without a `FINNHUB_API_KEY`, buys are blocked and the price job marks holdings STALE — add a key
+to `.env` / `.env.test`, or add a holding with a manual price for an "unresolved" symbol.
+
+## Run with Docker Compose (manual)
 
 ```bash
 cp .env.example .env
@@ -55,7 +101,6 @@ docker compose up --build
 
 - **App (via gateway): http://localhost:8090** — open this one; it fronts the frontend and both APIs on a single origin.
 - RabbitMQ management UI: http://localhost:15672 (guest/guest)
-- Without a `FINNHUB_API_KEY`, buys are blocked and the price job marks holdings STALE — add a key, or add a holding with a manual price for an "unresolved" symbol.
 
 ## Run locally without Docker
 
