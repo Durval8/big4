@@ -1,71 +1,54 @@
 ---
 name: verify
-description: Verify a code change in big4 (backend, investments-service, or frontend) actually works — picks the right test tier for what changed instead of always running the full Testcontainers suite.
+description: Verify a code change in big4 (backend, investments-service, or frontend) actually works — runs the right test tier for what changed, reads the diff, checks no test was weakened just to force a pass, and reports pass/fail with evidence. See reference.md for the full tier-routing table, weakened-test red flags, and known test-suite noise.
 ---
 
 # Verifying a change in big4
 
-This repo has three independently-verifiable areas (`backend/`, `investments-service/`,
-`frontend/`) plus a cross-cutting messaging contract between the two Java services. Don't
-reflexively run the whole `mvn verify` matrix — scope the check to what actually changed.
+Four steps, every time, in this order. Don't skip step 3 — a test suite that's green because an
+assertion was loosened is not a passing verification.
 
-## 1. Figure out what changed and what tier that needs
+## 1. Run the test suite
 
-```bash
-git diff --stat HEAD   # or against the target branch
-```
+Pick the right tier for what changed — don't reflexively run the whole `mvn verify` matrix. See
+`reference.md#tier-routing` for the full table (which test class per area, when Docker/Testcontainers
+is needed). Before anything needing `mvn verify` or a Testcontainers `*IT`, confirm the Docker daemon
+is actually up: `docker info > /dev/null 2>&1`. For the full `mvn verify` across both modules,
+delegate to the `test-runner` subagent instead of running it inline — its Surefire/Failsafe output is
+large and mostly noise.
 
-| Touched | Minimum verification |
-|---|---|
-| `backend/**` (not messaging) | `cd backend && mvn test -Dtest=<RelevantTest>` (fast, no Docker) |
-| `investments-service/**` (not messaging) | `cd investments-service && mvn test -Dtest=<RelevantTest>` |
-| Anything under `**/messaging/` or `**/messaging/contract/` in **either** module | Also run the contract test: `cd backend && mvn test -Dtest=InvestmentMessageContractTest` — this is the one test whose entire job is catching drift between the investments-service's canonical message records and the backend's mirror records |
-| A balance/budget formula (`BalanceService`, `BudgetService`) | `BalanceServiceTest` / `BudgetServiceTest` plus check whether `docs/DATA_MODEL.md`'s formulas still match |
-| A buy/cash-out/pricing/news code path | The corresponding `*IT` in `investments-service` (`HoldingServiceIT`, `PriceRefreshIT`, `NewsServiceIT`) — these need Docker (Testcontainers Mongo + RabbitMQ), see step 2 |
-| `frontend/**` | `cd frontend && npm run build` — this repo has **no lint script and no test runner configured**, so `tsc -b && vite build` succeeding is the only automated gate that exists. For behavior, run it in a browser (see the `run` skill) |
-| Both services' `pom.xml` / module wiring | `mvn test` from the repo root (both modules, fast tier only) |
+## 2. Read the diff
 
-Only reach for the **full** `mvn verify` (both modules, all Testcontainers ITs) when the change
-is broad (e.g. touches shared messaging contracts or module wiring) or when you're about to hand
-off/merge — it's slow and needs Docker up. For a scoped change, a targeted `-Dtest=`/`-Dit.test=`
-run is faster and just as conclusive.
-
-## 2. Before anything needing `mvn verify` or a Testcontainers `*IT`
-
-Check the Docker daemon is actually up first — half this repo's test suite silently depends on it:
+`git diff --stat HEAD` (or against the target branch) to see what changed and route step 1's tier.
+Then, separately, get the **full** diff for anything that touched a test file — you need the actual
+content, not just the file list, to do step 3:
 
 ```bash
-docker info > /dev/null 2>&1 && echo "Docker OK" || echo "Docker daemon not running — mvn verify / *IT tests will fail/hang"
+git diff HEAD -- '**/*Test.java' '**/*IT.java' '**/*.test.ts' '**/*.test.tsx'
 ```
 
-## 3. Running it
+## 3. Check that no test was weakened just to make things pass
 
-```bash
-# Fast tier (no Docker) — always safe, always fast
-cd backend && mvn test -Dtest=<Test>[#<method>]
-cd investments-service && mvn test -Dtest=<Test>[#<method>]
+For every test file touched in the diff, confirm assertions got **stricter or equal**, never
+looser, and that nothing was disabled, skipped, or deleted to reach green. See
+`reference.md#weakened-test-red-flags` for the specific patterns to scan for (loosened assertions,
+`@Disabled`/`@Ignore`, expected values edited to match new output instead of the code being fixed,
+mocks introduced around the exact thing under test, narrowed exception assertions, removed edge
+cases). If you find one, treat it as a finding — report it the same as a failing test, don't let it
+pass silently just because the suite went green.
 
-# Testcontainers tier (needs Docker) — scope to one IT when possible
-cd investments-service && mvn verify -Dit.test=<NameIT>
-```
+## 4. Report pass or fail, with evidence
 
-If you need the **entire** `mvn verify` across both modules, delegate it to a subagent rather
-than running it inline — Testcontainers/Failsafe output is large and mostly noise, and dumping it
-into the main conversation wastes context for no benefit. Report back pass/fail plus any failure
-stack traces, not the full log.
+Every verification ends with: **PASS or FAIL**, the exact command(s) run, and the evidence — test
+names + counts for a pass, the failing assertion/exception for a fail, the specific diff hunk for a
+weakened-test finding. "It works" without the command and its output isn't a verification.
 
-## 4. Frontend behavior (not just the build)
+## Frontend note
 
-`npm run build` only proves the TypeScript compiles. To actually verify a UI change works:
-start the dev server (`npm run dev`, proxies to whichever backend/investments-service you have
-running — see the `run` skill) and exercise the golden path plus the edge case the change targets
-in a browser. Don't claim a frontend fix is verified from `npm run build` passing alone.
+`npm run build` (`tsc -b && vite build`) only proves the TypeScript compiles — this repo has no
+lint script and no test runner configured for the frontend, so it's the only automated gate that
+exists. For an actual behavior check, start the dev server (see the `run` skill) and exercise the
+change in a browser; don't report a frontend fix as verified from the build alone.
 
-## 5. Known noise to ignore
-
-- Shared-broker test isolation: if a Testcontainers IT you didn't touch fails intermittently with
-  a message-consumption assertion, check whether it's the known cross-context `@RabbitListener`
-  contention (see `docs/TESTING.md`) before assuming your change broke it.
-- The provider adapter tests (`FinnhubProviderTest`, `FinnhubNewsProviderTest`) use
-  `MockRestServiceServer`, not a real HTTP server or live Finnhub — no network/API-key needed to
-  run them.
+See `reference.md#known-noise` for test flakiness that isn't your change's fault before assuming a
+failure is a regression.
