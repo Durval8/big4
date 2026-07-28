@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    allowedHosts: ['big4finance.online'],
     proxy: {
       // More specific first: investments are served by the investments service, everything
       // else by the backend. In Docker this split is done by the nginx gateway instead.
@@ -20,9 +21,6 @@ export default defineConfig({
     },
   },
   preview: {
-    allowedHosts: ['big4finance.online'],
-  },
-  server: {
     allowedHosts: ['big4finance.online'],
   },
 });
