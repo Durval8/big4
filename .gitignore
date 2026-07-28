@@ -1,6 +1,9 @@
 .env
 .env.test
 
+# Claude Code local overrides (project-shared .claude/settings.json, skills/, agents/ stay tracked)
+.claude/settings.local.json
+
 # Backend / services
 backend/target/
 investments-service/target/

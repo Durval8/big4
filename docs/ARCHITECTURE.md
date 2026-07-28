@@ -10,7 +10,7 @@ package/file layouts and the few non-obvious wiring decisions.
 |---|---|
 | Backend | Spring Boot 3.3.2, Java 21, Spring Data JPA + Hibernate, Spring AMQP |
 | Investments service | Spring Boot 3.3.2, Java 21, Spring Data MongoDB, Spring AMQP, Spring `RestClient` |
-| Databases | PostgreSQL 16 (backend), MongoDB 7 (investments service) — both `ddl-auto=update` / schema-on-write, no migration tool yet |
+| Databases | PostgreSQL 16 (backend, Flyway-managed — `ddl-auto: validate`, versioned migrations under `backend/src/main/resources/db/migration/`), MongoDB 7 (investments service) — Mongo is still schema-on-write, no migration tool yet |
 | Messaging | RabbitMQ 3.13 |
 | Gateway | nginx (single-origin reverse proxy) |
 | Frontend | React 18 + TypeScript, Vite 5, React Router 6 (no state/data lib — `fetch` + hooks) |
@@ -114,5 +114,5 @@ Vite's `server.proxy` splits `/api/investments` → `:8081` and `/api` → `:808
 ## Follow-ups
 
 Deferred, not forgotten: Spring Security/auth, user-manageable accounts/categories, recurring
-transactions, multi-currency, valuation history, Flyway/Mongo migrations, pagination, and a
+transactions, multi-currency, valuation history, a Mongo migration tool, pagination, and a
 dynamic-resolver gateway config (see [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md#deployment)).

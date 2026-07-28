@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit *)",
+            "command": "HITS=\"$(git diff --cached --diff-filter=ACM -- '.env*' 2>/dev/null | grep -E '^\\+[A-Za-z_][A-Za-z0-9_]*=.{20,}')\"; if [ -n \"$HITS\" ]; then REASON=\"Staged .env* changes look like they add a real secret value (20+ char assignment): ${HITS//$'\\n'/ | } -- confirm this isn't a live credential before committing.\"; jq -n --arg reason \"$REASON\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"ask\",permissionDecisionReason:$reason}}'; fi",
+            "timeout": 10,
+            "statusMessage": "Checking staged .env* files for secrets..."
+          },
+          {
+            "type": "agent",
+            "if": "Bash(git commit *)",
+            "model": "claude-sonnet-5",
+            "timeout": 120,
+            "statusMessage": "Checking staged changes against docs/*.md for staleness...",
+            "prompt": "You are a fast pre-commit checker for the big4 repo. Ignore the raw hook input ($ARGUMENTS) except to know a commit is being attempted. Run `git diff --cached --stat` first. If the staged diff touches ONLY tests, docs/**, or .claude/**, immediately allow (hookSpecificOutput.permissionDecision = \"allow\") and stop -- nothing to check. Otherwise run `git diff --cached` and check ONLY for these specific, high-confidence cases where docs/*.md would now be factually wrong: (1) a balance/budget formula changed in BalanceService or BudgetService (backend) without a matching edit to docs/DATA_MODEL.md; (2) a controller endpoint, request DTO, or response DTO changed shape (new/removed/renamed field, new endpoint, changed validation) without a matching edit to docs/API.md; (3) anything under **/messaging/** or **/messaging/contract/** changed in either module without a matching edit to docs/SYSTEM_DESIGN.md or docs/INVESTMENTS_SERVICE.md; (4) docker-compose.yml or gateway/nginx.conf routing/topology changed without a matching edit to docs/SYSTEM_DESIGN.md. Be conservative: refactors with no behavior change, new tests, internal renames with no external effect, and anything you are not confident about should NOT be flagged. If none of these four cases clearly apply, allow silently. If one clearly applies and the matching doc was NOT touched in this same diff, output hookSpecificOutput.permissionDecision = \"ask\" with permissionDecisionReason naming exactly which doc looks stale and why in one sentence -- do not edit any files yourself, you are a checker only."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if docker info > /dev/null 2>&1; then jq -n \"{systemMessage: \\\"Docker daemon: up \\u2014 mvn verify / Testcontainers ITs can run\\\", hookSpecificOutput: {hookEventName: \\\"SessionStart\\\", additionalContext: \\\"Docker daemon is running at session start.\\\"}}\"; else jq -n \"{systemMessage: \\\"Docker daemon: NOT running \\u2014 mvn verify / Testcontainers ITs will fail until it starts\\\", hookSpecificOutput: {hookEventName: \\\"SessionStart\\\", additionalContext: \\\"Docker daemon was NOT running at session start; mvn verify and Testcontainers integration tests will fail until it is started.\\\"}}\"; fi",
+            "timeout": 10,
+            "statusMessage": "Checking Docker daemon status..."
+          }
+        ]
+      }
+    ]
+  }
+}
