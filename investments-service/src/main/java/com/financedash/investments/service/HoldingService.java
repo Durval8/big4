@@ -193,14 +193,22 @@ public class HoldingService {
         return HoldingResponse.from(h);
     }
 
-    /** Data-entry correction (symbol/quantity). No cash movement; value may change, so snapshot. */
+    /** Data-entry correction (symbol/amount invested). No cash movement; value may change, so snapshot. */
     public HoldingResponse update(String id, HoldingUpdateRequest request) {
         Holding h = require(id);
         if (h.getStatus() != HoldingStatus.OPEN) {
             throw new InvalidInvestmentException("Cannot edit a cashed-out holding");
         }
+        BigDecimal currentAvgCost = h.getAvgCost();
+        if (currentAvgCost == null || currentAvgCost.signum() <= 0) {
+            throw new InvalidInvestmentException(
+                    "Cannot correct by amount: no per-share cost on record. Set a manual price first.");
+        }
+        BigDecimal newAmount = Precision.money(request.amount());
+        BigDecimal newQuantity = newAmount.divide(currentAvgCost, Precision.QUANTITY, Precision.ROUNDING);
         h.setStockSymbol(normalize(request.stockSymbol()));
-        h.setQuantity(Precision.quantity(request.quantity()));
+        h.setCostBasis(newAmount);
+        h.setQuantity(newQuantity);
         h.setAvgCost(avgCost(h));
         holdingRepository.save(h);
         emitSnapshot();

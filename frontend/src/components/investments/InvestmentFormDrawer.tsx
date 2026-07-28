@@ -17,10 +17,9 @@ interface InvestmentFormDrawerProps {
 export function InvestmentFormDrawer({ investment, onClose, onCreate, onUpdate }: InvestmentFormDrawerProps) {
   const editing = investment !== null;
   const [stockSymbol, setStockSymbol] = useState(investment?.stockSymbol ?? "");
-  const [amount, setAmount] = useState<number | "">("");
+  const [amount, setAmount] = useState<number | "">(editing ? investment.costBasis : "");
   const [sourceAccount, setSourceAccount] = useState<AccountType>("CHECKING");
   const [manualPrice, setManualPrice] = useState<number | "">("");
-  const [quantity, setQuantity] = useState<number | "">(editing ? investment.quantity : "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,11 +28,10 @@ export function InvestmentFormDrawer({ investment, onClose, onCreate, onUpdate }
     setSubmitting(true);
     setError(null);
     try {
+      if (amount === "") return;
       if (editing) {
-        if (quantity === "") return;
-        await onUpdate(investment.id, { stockSymbol, quantity });
+        await onUpdate(investment.id, { stockSymbol, amount });
       } else {
-        if (amount === "") return;
         await onCreate({
           stockSymbol,
           amount,
@@ -65,17 +63,10 @@ export function InvestmentFormDrawer({ investment, onClose, onCreate, onUpdate }
 
           {editing ? (
             <>
-              <TextField
-                label="Shares"
-                type="number"
-                step="0.000001"
-                value={quantity === "" ? "" : String(quantity)}
-                onChange={(e) => setQuantity(e.target.value === "" ? "" : Number(e.target.value))}
-                required
-              />
+              <CurrencyInput label="Amount invested" value={amount} onChange={setAmount} required />
               <p className="field-hint">
-                A correction only — prices are fetched automatically, so this adjusts your share count
-                without moving cash.
+                Correction only — share count is re-derived from your entry price. No cash movement
+                is recorded.
               </p>
             </>
           ) : (
@@ -93,8 +84,8 @@ export function InvestmentFormDrawer({ investment, onClose, onCreate, onUpdate }
                 onChange={setManualPrice}
               />
               <p className="field-hint">
-                Shares are computed from the live price. Set a manual price only for a symbol the price
-                provider doesn't list.
+                Optional. If set, shares are derived from this price and the difference vs. the live
+                price shows immediately as P&amp;L. Required for symbols the provider doesn't list.
               </p>
             </>
           )}

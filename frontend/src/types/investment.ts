@@ -10,6 +10,7 @@ export interface Investment {
   id: string;
   stockSymbol: string;
   quantity: number;
+  costBasis: number;
   avgCost: number | null;
   latestPrice: number | null;
   currentValue: number;
@@ -23,7 +24,7 @@ export interface Investment {
   updatedAt: string;
 }
 
-/** Buy by money amount from a cash account. manualPrice is only used for unlisted symbols. */
+/** Buy by money amount from a cash account. manualPrice is used as entry price for recognized symbols too. */
 export interface InvestmentInput {
   stockSymbol: string;
   amount: number;
@@ -31,10 +32,10 @@ export interface InvestmentInput {
   manualPrice?: number;
 }
 
-/** A data-entry correction — prices are the source of truth now, so you edit shares, not value. */
+/** A data-entry correction — corrects the total amount invested; shares are re-derived from avgCost. */
 export interface InvestmentCorrectionInput {
   stockSymbol: string;
-  quantity: number;
+  amount: number;
 }
 
 export interface ManualPriceInput {

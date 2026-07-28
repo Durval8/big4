@@ -36,7 +36,7 @@ class InvestmentControllerTest {
         return new HoldingResponse("abc", "AAPL",
                 new BigDecimal("5.000000"), new BigDecimal("10.0000"), new BigDecimal("15.0000"),
                 new BigDecimal("75.00"), new BigDecimal("50.00"), new BigDecimal("0.00"),
-                new BigDecimal("50.00"), PriceStatus.OK, Instant.parse("2026-07-24T00:00:00Z"),
+                new BigDecimal("50.00"), new BigDecimal("400.00"), PriceStatus.OK, Instant.parse("2026-07-24T00:00:00Z"),
                 HoldingStatus.OPEN, Instant.parse("2026-07-24T00:00:00Z"),
                 Instant.parse("2026-07-24T00:00:00Z"));
     }
