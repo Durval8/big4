@@ -31,9 +31,12 @@ keeps that shape and adds paging + sorting alongside it.
   size up to the max via `?size=`.
 - **Default sort**: `transactionDate DESC`, tiebroken by `id DESC` — matches today's behavior when
   no sort params are given.
-- **New sort control**: `sortBy` (`date` | `amount`, default `date`) + `sortDir` (`asc` | `desc`,
-  default `desc`), two separate query params rather than one combined string — explicit, validates
+- **New sort control**: `sortBy` (`DATE` | `AMOUNT`, default `DATE`) + `sortDir` (`ASC` | `DESC`,
+  default `DESC`), two separate query params rather than one combined string — explicit, validates
   cleanly against a fixed enum, consistent with this endpoint's existing separate-param style.
+  Uppercase to match every other enum-bound query param on this endpoint (`accountType=CHECKING`,
+  `category=GROCERIES`) and elsewhere (`BudgetController`'s `range=WEEK`) — all rely on Spring's
+  default case-sensitive enum converter, so matching that casing avoids writing a custom one.
   Whichever field is chosen, `id DESC` is *always* appended as a secondary sort key so page
   boundaries stay stable when multiple rows share a date or amount.
 - **Filters unchanged**: `category` and `accountType` stay single-value optional params, exactly as
@@ -64,8 +67,8 @@ keeps that shape and adds paging + sorting alongside it.
 | `category` | `Category` | none | unchanged, single-value |
 | `page` | `int` | `0` | zero-indexed |
 | `size` | `int` | `20` | max `100`, else 400 |
-| `sortBy` | `date` \| `amount` | `date` | invalid value → 400 |
-| `sortDir` | `asc` \| `desc` | `desc` | invalid value → 400 |
+| `sortBy` | `DATE` \| `AMOUNT` | `DATE` | invalid value → 400 |
+| `sortDir` | `ASC` \| `DESC` | `DESC` | invalid value → 400 |
 
 Response body changes from `TransactionResponse[]` to:
 
@@ -90,7 +93,7 @@ Response body changes from `TransactionResponse[]` to:
 - `TransactionService.findAll(...)` takes a `Pageable` (already carrying the resolved `Sort`)
   alongside the existing `from`/`to`/`accountType`/`category` params, and returns `Page<Transaction>`
   instead of `List<Transaction>`.
-- `sortBy` is resolved to an entity field internally (`date` → `transactionDate`, `amount` →
+- `sortBy` is resolved to an entity field internally (`DATE` → `transactionDate`, `AMOUNT` →
   `amount`) — the client never supplies a raw field name, so there's no way to sort by an unintended
   column.
 - `TransactionRepository`'s existing derived-query methods (filtered by date range +
@@ -174,3 +177,6 @@ dependencies or privacy/cost concerns (unlike the other two shelved specs in thi
 
 - 2026-07-28: added the "Database indexes" section (V2 migration) after a spec review caught that
   the original draft never addressed index support for the new filtered/sorted query shape.
+- 2026-07-28: `sortBy`/`sortDir` values changed from lowercase (`date`/`asc`) to uppercase
+  (`DATE`/`ASC`) to match this endpoint's and the codebase's existing enum-bound query param
+  convention, avoiding a custom case-insensitive converter.
