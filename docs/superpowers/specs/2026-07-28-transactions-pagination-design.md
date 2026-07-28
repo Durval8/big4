@@ -101,6 +101,34 @@ Response body changes from `TransactionResponse[]` to:
   `TransactionRepository` directly for their sum/aggregate computations — they don't go through
   `TransactionService.findAll` — so dashboard/budget math is untouched by this change.
 
+## Database indexes
+
+Caught in spec review: `transactions` currently has **no index beyond the implicit one on `id`**
+(`db/migration/V1__initial_schema.sql`). Every paginated request runs a `WHERE transaction_date
+BETWEEN ... [AND account_type = ?] [AND category = ?] ORDER BY <date|amount>, id` query, repeatedly
+— exactly the shape that needs index support once the table grows past a trivial row count, which
+is the whole reason pagination is being added. Skipping this would make the new endpoint no faster
+than the current one once the table's large enough to matter.
+
+Single-column indexes, not a hand-built composite per filter/sort permutation — the latter is
+over-engineering for a personal-scale table; Postgres's planner combines single-column indexes via
+bitmap AND for the filtered cases:
+
+- `idx_transactions_transaction_date` on `transaction_date` — the always-present date-range filter,
+  and the default sort.
+- `idx_transactions_account_type` on `account_type`
+- `idx_transactions_category` on `category`
+- `idx_transactions_amount` on `amount` — the new amount-sort option.
+
+New migration `db/migration/V2__add_transaction_indexes.sql`:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_transactions_transaction_date ON transactions (transaction_date);
+CREATE INDEX IF NOT EXISTS idx_transactions_account_type ON transactions (account_type);
+CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions (category);
+CREATE INDEX IF NOT EXISTS idx_transactions_amount ON transactions (amount);
+```
+
 ## Frontend changes
 
 - `types/transaction.ts`: `TransactionFilters` gains `sortBy`/`sortDir`; a new `PageResponse<T>`
@@ -120,6 +148,9 @@ Response body changes from `TransactionResponse[]` to:
 - Repository-level test: seed a multi-page fixture (spanning date and amount ties), assert
   `Page` metadata (`totalElements`, `totalPages`, `content` ordering) is correct for each
   `sortBy`/`sortDir` combination, including the `id DESC` tiebreak.
+- `V2__add_transaction_indexes.sql` is exercised automatically by every Testcontainers `mvn verify`
+  run (Flyway applies all migrations against the ephemeral Postgres container) — no dedicated test
+  needed beyond confirming the app context still starts cleanly.
 - Controller/web-slice test: `page`/`size` params wired correctly; `size > 100` → 400; invalid
   `sortBy`/`sortDir` value → 400; response shape matches `PageResponse`.
 - Update existing `TransactionControllerTest`/`TransactionServiceTest` assertions for the new
@@ -138,3 +169,8 @@ Response body changes from `TransactionResponse[]` to:
 
 None blocking — this is a self-contained, additive-to-existing-filters change with no external
 dependencies or privacy/cost concerns (unlike the other two shelved specs in this directory).
+
+## Revision history
+
+- 2026-07-28: added the "Database indexes" section (V2 migration) after a spec review caught that
+  the original draft never addressed index support for the new filtered/sorted query shape.
