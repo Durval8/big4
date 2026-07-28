@@ -6,18 +6,18 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git commit *)",
             "command": "bash .claude/scripts/check-env-secrets.sh",
+            "if": "Bash(git commit *)",
             "timeout": 10,
             "statusMessage": "Checking staged .env* files for secrets..."
           },
           {
             "type": "agent",
+            "prompt": "You are a fast pre-commit checker for the big4 repo. Ignore the raw hook input ($ARGUMENTS) except to know a commit is being attempted. First run `bash .claude/scripts/check-docs-staleness-candidates.sh` -- it mirrors docs-sync.md's mapping table and reports candidate cases where a source-code pattern changed without its matching doc being touched in the same staged diff. If it reports no candidates, immediately allow (hookSpecificOutput.permissionDecision = \"allow\") and stop -- nothing to check. Otherwise, for each candidate it reports, run `git diff --cached` and look closely at the actual change: is it a genuine behavior change that makes the named doc factually wrong, or a refactor/rename/new-test with no external effect (the script can't distinguish this, it only matches filenames)? Be conservative -- only flag cases you're confident are real. If none of the candidates hold up under this closer look, allow silently. If one does, output hookSpecificOutput.permissionDecision = \"ask\" with permissionDecisionReason naming exactly which doc looks stale and why in one sentence -- do not edit any files yourself, you are a checker only.",
             "if": "Bash(git commit *)",
-            "model": "claude-sonnet-5",
             "timeout": 120,
-            "statusMessage": "Checking staged changes against docs/*.md for staleness...",
-            "prompt": "You are a fast pre-commit checker for the big4 repo. Ignore the raw hook input ($ARGUMENTS) except to know a commit is being attempted. First run `bash .claude/scripts/check-docs-staleness-candidates.sh` -- it mirrors docs-sync.md's mapping table and reports candidate cases where a source-code pattern changed without its matching doc being touched in the same staged diff. If it reports no candidates, immediately allow (hookSpecificOutput.permissionDecision = \"allow\") and stop -- nothing to check. Otherwise, for each candidate it reports, run `git diff --cached` and look closely at the actual change: is it a genuine behavior change that makes the named doc factually wrong, or a refactor/rename/new-test with no external effect (the script can't distinguish this, it only matches filenames)? Be conservative -- only flag cases you're confident are real. If none of the candidates hold up under this closer look, allow silently. If one does, output hookSpecificOutput.permissionDecision = \"ask\" with permissionDecisionReason naming exactly which doc looks stale and why in one sentence -- do not edit any files yourself, you are a checker only."
+            "model": "claude-sonnet-5",
+            "statusMessage": "Checking staged changes against docs/*.md for staleness..."
           }
         ]
       }
@@ -34,5 +34,10 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true
   }
 }
