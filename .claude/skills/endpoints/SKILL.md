@@ -9,8 +9,7 @@ One grep across both Spring controllers packages, straight from source — not `
 can never be stale even if a doc edit was missed:
 
 ```bash
-grep -rn "@RequestMapping\|@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping\|@PatchMapping" \
-  backend/src/main/java investments-service/src/main/java
+bash .claude/scripts/list-endpoints.sh
 ```
 
 Read it as: the class-level `@RequestMapping("/api/...")` is the base path; each method-level

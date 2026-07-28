@@ -57,10 +57,14 @@ diff, as a finding to report, not a detail to wave through:
 - **Test data narrowed**: an edge-case value quietly dropped from a parameterized test so the case
   that used to fail no longer runs at all.
 
-How to check: read every hunk in a touched test file, don't skim the `--stat`. If a test file shows
-up in the diff and the production-code change alone doesn't obviously justify the specific assertion
-edit, that's suspicious — dig into what the original assertion was protecting (git blame / the
-commit that introduced it) before accepting the change.
+How to check: run `bash .claude/scripts/check-weakened-tests.sh` (or `check-weakened-tests.sh --cached`
+for a staged diff) first — it mechanically flags `@Disabled`/`@Ignore`/`.skip(`/`xit(` additions and
+a dropped assert/expect count. It's a heuristic pre-filter, not a verdict: a clean run doesn't mean
+the diff is safe, and a flagged run doesn't necessarily mean it's wrong. Either way, still read every
+hunk in the touched test file yourself, don't skim the `--stat` — the subtler cases (an expected value
+edited to match new output, tautological mocking) require judging whether the production-code change
+actually justifies the specific assertion edit, which the script can't do. Dig into git blame / the
+commit that introduced an assertion before accepting a change to it.
 
 ## Known noise
 

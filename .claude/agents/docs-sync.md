@@ -17,6 +17,11 @@ git diff HEAD        # fallback if invoked on-demand with nothing staged
 
 ## The mapping (this repo's docs are treated as source of truth — see CLAUDE.md)
 
+The first 4 rows below are also encoded in `.claude/scripts/check-docs-staleness-candidates.sh`,
+which the pre-commit docs-staleness hook runs as a fast pre-filter before invoking this subagent. If
+you change this table's patterns for those 4 rows, update that script's `report_case` calls to match
+— otherwise the hook's candidates and this subagent's judgment will silently drift apart.
+
 | Diff touches | Check / update |
 |---|---|
 | `BalanceService`, `BudgetService`, or the cash-flow/valuation fold-in formulas | `docs/DATA_MODEL.md` — the exact formula blocks (`netWorth`, `spending`, `netInvestment`, budget `spent`/`remaining`) |
