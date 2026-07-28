@@ -46,9 +46,12 @@ make up      # docker compose -p big4 up -d
 
 ```bash
 make ps                              # all 7 services healthy/running?
-make logs                            # tail for startup errors, Ctrl-C when satisfied
 curl -sf https://big4finance.online/ -o /dev/null && echo "gateway OK"
 ```
+
+For startup errors, prefer the `logs` skill (`bash .claude/scripts/fetch-service-logs.sh --since 15m`)
+over `make logs` — it's bounded and pre-filtered to ERROR/WARN/Exception instead of an unbounded
+raw `-f` tail you'd have to read through and Ctrl-C out of.
 
 If `backend` or `investments-service` were rebuilt, nginx may still be routing to the old
 container's IP (it resolves upstream hostnames at its own startup, not per-request):

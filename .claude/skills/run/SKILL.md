@@ -82,9 +82,12 @@ behavior**, or you want an environment that matches production topology.
 ```bash
 # Isolated test stack (recommended for anything exploratory — separate ports/volumes from prod)
 make build-test && make up-test     # app at http://localhost:9090
-make logs-test                      # tail logs
 make down-test                      # stop (make clean-test also wipes volumes — destructive)
 ```
+
+For debugging instead of a live tail, use the `logs` skill (`bash .claude/scripts/fetch-service-logs.sh
+--test`) — bounded and pre-filtered to ERROR/WARN/Exception rather than `make logs-test`'s unbounded
+raw `-f` stream.
 
 Never use `make up`/`make build` (the **production** targets, backing the live
 https://big4finance.online Cloudflare tunnel) for routine verification — always use the `-test`
