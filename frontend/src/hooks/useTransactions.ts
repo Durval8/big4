@@ -4,6 +4,8 @@ import type { Transaction, TransactionFilters, TransactionInput } from "../types
 
 export function useTransactions(filters: TransactionFilters) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -11,19 +13,27 @@ export function useTransactions(filters: TransactionFilters) {
     setLoading(true);
     setError(null);
     try {
-      const data = await transactionsApi.list(filters);
-      setTransactions(data);
+      const data = await transactionsApi.list(filters, page);
+      setTransactions(data.content);
+      setTotalPages(data.totalPages);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load transactions");
     } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.from, filters.to, filters.accountType, filters.category]);
+  }, [filters.from, filters.to, filters.accountType, filters.category, filters.sortBy, filters.sortDir, page]);
 
   useEffect(() => {
     reload();
   }, [reload]);
+
+  // Any filter or sort change goes back to page 0 — a stale page number from a
+  // previous, differently-filtered result set wouldn't make sense to keep.
+  useEffect(() => {
+    setPage(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.from, filters.to, filters.accountType, filters.category, filters.sortBy, filters.sortDir]);
 
   const create = useCallback(
     async (input: TransactionInput) => {
@@ -49,5 +59,5 @@ export function useTransactions(filters: TransactionFilters) {
     [reload],
   );
 
-  return { transactions, loading, error, create, update, remove, reload };
+  return { transactions, loading, error, page, setPage, totalPages, create, update, remove, reload };
 }
