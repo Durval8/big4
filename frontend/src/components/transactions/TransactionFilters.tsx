@@ -4,6 +4,8 @@ import { formatEnumLabel } from "../../lib/format";
 export interface TransactionFilterValues {
   accountType?: AccountType;
   category?: Category;
+  sortBy?: "DATE" | "AMOUNT";
+  sortDir?: "ASC" | "DESC";
 }
 
 interface TransactionFiltersProps {
@@ -37,6 +39,20 @@ export function TransactionFilters({ value, onChange }: TransactionFiltersProps)
             {formatEnumLabel(category)}
           </option>
         ))}
+      </select>
+      <select
+        value={value.sortBy ?? "DATE"}
+        onChange={(e) => onChange({ ...value, sortBy: e.target.value as "DATE" | "AMOUNT" })}
+      >
+        <option value="DATE">Sort by date</option>
+        <option value="AMOUNT">Sort by amount</option>
+      </select>
+      <select
+        value={value.sortDir ?? "DESC"}
+        onChange={(e) => onChange({ ...value, sortDir: e.target.value as "ASC" | "DESC" })}
+      >
+        <option value="DESC">Descending</option>
+        <option value="ASC">Ascending</option>
       </select>
     </div>
   );
