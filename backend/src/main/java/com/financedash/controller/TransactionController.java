@@ -50,6 +50,15 @@ public class TransactionController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "DATE") TransactionSortBy sortBy,
             @RequestParam(defaultValue = "DESC") Sort.Direction sortDir) {
+        // PageRequest.of throws IllegalArgumentException on a negative page or size < 1, and
+        // GlobalExceptionHandler has no mapping for that — it would surface as a 500 on
+        // trivially malformed input. Reject it here so it stays a 400 like the size cap.
+        if (page < 0) {
+            throw new InvalidTransactionException("page must not be negative");
+        }
+        if (size < 1) {
+            throw new InvalidTransactionException("size must be at least 1");
+        }
         if (size > MAX_PAGE_SIZE) {
             throw new InvalidTransactionException("size must not exceed " + MAX_PAGE_SIZE);
         }

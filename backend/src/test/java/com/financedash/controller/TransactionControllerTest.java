@@ -255,6 +255,20 @@ class TransactionControllerTest {
     }
 
     @Test
+    void listReturns400WhenPageIsNegative() throws Exception {
+        mockMvc.perform(get("/api/transactions").param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void listReturns400WhenSizeIsZero() throws Exception {
+        mockMvc.perform(get("/api/transactions").param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
     void updateReturns200() throws Exception {
         when(service.update(eq(1L), any())).thenReturn(sampleIncome());
 
