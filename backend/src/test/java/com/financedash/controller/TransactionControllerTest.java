@@ -1,5 +1,6 @@
 package com.financedash.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -25,9 +26,15 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -185,19 +192,23 @@ class TransactionControllerTest {
     }
 
     @Test
-    void listReturnsArray() throws Exception {
-        when(service.findAll(any(), any(), any(), any())).thenReturn(List.of(sampleIncome()));
+    void listReturnsPageResponse() throws Exception {
+        Page<Transaction> page = new PageImpl<>(List.of(sampleIncome()), PageRequest.of(0, 20), 1);
+        when(service.findAll(any(), any(), any(), any(), any())).thenReturn(page);
 
         mockMvc.perform(get("/api/transactions"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$[0].id").value(1));
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content[0].id").value(1))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test
     void listPassesFilterParamsThrough() throws Exception {
-        when(service.findAll(any(), any(), eq(AccountType.SAVINGS), eq(Category.GROCERIES)))
-                .thenReturn(List.of());
+        Page<Transaction> empty = new PageImpl<>(List.of());
+        when(service.findAll(any(), any(), eq(AccountType.SAVINGS), eq(Category.GROCERIES), any()))
+                .thenReturn(empty);
 
         mockMvc.perform(get("/api/transactions")
                         .param("from", "2026-01-01")
@@ -208,7 +219,39 @@ class TransactionControllerTest {
 
         verify(service).findAll(
                 eq(LocalDate.of(2026, 1, 1)), eq(LocalDate.of(2026, 12, 31)),
-                eq(AccountType.SAVINGS), eq(Category.GROCERIES));
+                eq(AccountType.SAVINGS), eq(Category.GROCERIES), any());
+    }
+
+    @Test
+    void listBuildsPageableFromPageSizeSortParams() throws Exception {
+        Page<Transaction> empty = new PageImpl<>(List.of());
+        when(service.findAll(any(), any(), any(), any(), any())).thenReturn(empty);
+
+        mockMvc.perform(get("/api/transactions")
+                        .param("page", "2")
+                        .param("size", "10")
+                        .param("sortBy", "AMOUNT")
+                        .param("sortDir", "ASC"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(service).findAll(any(), any(), any(), any(), captor.capture());
+        Pageable captured = captor.getValue();
+        assertThat(captured.getPageNumber()).isEqualTo(2);
+        assertThat(captured.getPageSize()).isEqualTo(10);
+        Sort.Order primary = captured.getSort().getOrderFor("amount");
+        assertThat(primary).isNotNull();
+        assertThat(primary.getDirection()).isEqualTo(Sort.Direction.ASC);
+        Sort.Order tiebreak = captured.getSort().getOrderFor("id");
+        assertThat(tiebreak).isNotNull();
+        assertThat(tiebreak.getDirection()).isEqualTo(Sort.Direction.DESC);
+    }
+
+    @Test
+    void listReturns400WhenSizeExceedsMax() throws Exception {
+        mockMvc.perform(get("/api/transactions").param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
     }
 
     @Test
