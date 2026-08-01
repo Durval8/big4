@@ -5,11 +5,13 @@ import { TransactionFilters, type TransactionFilterValues } from "../components/
 import { TransactionFormDrawer } from "../components/transactions/TransactionFormDrawer";
 import { DeleteConfirmDialog } from "../components/transactions/DeleteConfirmDialog";
 import { Button } from "../components/common/Button";
+import { Pagination } from "../components/common/Pagination";
 import type { Transaction } from "../types/transaction";
 
 export function TransactionsPage() {
   const [filters, setFilters] = useState<TransactionFilterValues>({});
-  const { transactions, loading, error, create, update, remove } = useTransactions(filters);
+  const { transactions, loading, error, page, setPage, totalPages, create, update, remove } =
+    useTransactions(filters);
 
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -35,11 +37,14 @@ export function TransactionsPage() {
         </div>
         {error && <div className="error-banner">{error}</div>}
         {loading ? <p>Loading…</p> : (
-          <TransactionTable
-            transactions={transactions}
-            onEdit={setEditingTransaction}
-            onDelete={setDeletingTransaction}
-          />
+          <>
+            <TransactionTable
+              transactions={transactions}
+              onEdit={setEditingTransaction}
+              onDelete={setDeletingTransaction}
+            />
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          </>
         )}
       </div>
 
