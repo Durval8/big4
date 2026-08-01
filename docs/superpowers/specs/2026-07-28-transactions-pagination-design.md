@@ -162,6 +162,27 @@ CREATE INDEX IF NOT EXISTS idx_transactions_amount ON transactions (amount);
   response shape; add a pager-interaction test (clicking next page triggers a refetch with the
   right `page` param) and a sort-dropdown test.
 
+## Test-environment seed data (nice-to-have)
+
+Pagination and sorting are hard to *see* against an empty table — you can't page through, tie-break,
+or eyeball a `DATE`-vs-`AMOUNT` sort with three rows. It would be very useful if launching the
+isolated test stack (`make up-test`, `-p big4-test`) loaded a batch of **dummy transactions** on
+deploy, purely for testing and visual verification of this feature.
+
+- **Scope it to the test environment only** — never the production stack. The two share one
+  `docker-compose.yml` but run as separate Compose projects with separate volumes; the seed must not
+  reach `-p big4` / `.env`.
+- **Enough rows to actually exercise paging**: several pages' worth at the default `size=20`
+  (~50–100+ transactions), spanning multiple dates (including deliberate date **and** amount ties so
+  the `id DESC` tiebreak is observable), a spread of `accountType`/`category` values, and a range of
+  amounts so `sortBy=AMOUNT` visibly reorders.
+- **Mechanism: a seeding step in the `make up-test` target.** Decided over a profiled Flyway
+  migration or a gated `data.sql` — keeps the seed entirely inside the test-stack tooling (the
+  `Makefile`) rather than inside the app's migration history, so there's no risk of a test-only
+  migration file ever being picked up by the production `db/migration` scan. This is a
+  developer-convenience add-on to the feature, out of the critical path; it can ship in the same PR
+  or a follow-up.
+
 ## Docs
 
 - `docs/API.md`: document the five new query params and the `PageResponse` shape on
@@ -171,7 +192,9 @@ CREATE INDEX IF NOT EXISTS idx_transactions_amount ON transactions (amount);
 ## Open questions
 
 None blocking — this is a self-contained, additive-to-existing-filters change with no external
-dependencies or privacy/cost concerns (unlike the other two shelved specs in this directory).
+dependencies or privacy/cost concerns (unlike the other two shelved specs in this directory). The
+seed-data mechanism (above) is resolved (`make up-test` seeding step) but is a nice-to-have,
+out-of-critical-path add-on, not a gate on the core work.
 
 ## Revision history
 
@@ -180,3 +203,8 @@ dependencies or privacy/cost concerns (unlike the other two shelved specs in thi
 - 2026-07-28: `sortBy`/`sortDir` values changed from lowercase (`date`/`asc`) to uppercase
   (`DATE`/`ASC`) to match this endpoint's and the codebase's existing enum-bound query param
   convention, avoiding a custom case-insensitive converter.
+- 2026-08-01: added the "Test-environment seed data (nice-to-have)" section — load dummy
+  transactions on `make up-test` deploy so pagination/sorting can be visually exercised against a
+  non-trivial dataset; test-stack-only, mechanism deferred to implementation.
+- 2026-08-01: seed-data mechanism decided — a seeding step inside the `make up-test` target, not a
+  Flyway migration or `data.sql`, so it can never leak into the production migration path.
