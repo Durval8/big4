@@ -9,7 +9,8 @@ import com.financedash.exception.InvalidTransactionException;
 import com.financedash.exception.ResourceNotFoundException;
 import com.financedash.repository.TransactionRepository;
 import java.time.LocalDate;
-import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -21,21 +22,21 @@ public class TransactionService {
         this.transactionRepository = transactionRepository;
     }
 
-    public List<Transaction> findAll(LocalDate from, LocalDate to, AccountType accountType, Category category) {
+    public Page<Transaction> findAll(
+            LocalDate from, LocalDate to, AccountType accountType, Category category, Pageable pageable) {
         if (accountType != null && category != null) {
             return transactionRepository
-                    .findByTransactionDateBetweenAndAccountTypeAndCategoryOrderByTransactionDateDescIdDesc(
-                            from, to, accountType, category);
+                    .findByTransactionDateBetweenAndAccountTypeAndCategory(from, to, accountType, category, pageable);
         }
         if (accountType != null) {
             return transactionRepository
-                    .findByTransactionDateBetweenAndAccountTypeOrderByTransactionDateDescIdDesc(from, to, accountType);
+                    .findByTransactionDateBetweenAndAccountType(from, to, accountType, pageable);
         }
         if (category != null) {
             return transactionRepository
-                    .findByTransactionDateBetweenAndCategoryOrderByTransactionDateDescIdDesc(from, to, category);
+                    .findByTransactionDateBetweenAndCategory(from, to, category, pageable);
         }
-        return transactionRepository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(from, to);
+        return transactionRepository.findByTransactionDateBetween(from, to, pageable);
     }
 
     public Transaction findById(Long id) {

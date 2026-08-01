@@ -26,6 +26,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class TransactionServiceTest {
@@ -271,43 +276,42 @@ class TransactionServiceTest {
     @Nested
     class FindAllRouting {
 
+        private static final Pageable PAGEABLE = PageRequest.of(0, 20,
+                Sort.by(Sort.Direction.DESC, "transactionDate").and(Sort.by(Sort.Direction.DESC, "id")));
+
         @Test
         void noFiltersUsesDateOnlyQuery() {
-            service.findAll(FROM, TO, null, null);
-            verify(repository).findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(FROM, TO);
+            service.findAll(FROM, TO, null, null, PAGEABLE);
+            verify(repository).findByTransactionDateBetween(FROM, TO, PAGEABLE);
         }
 
         @Test
         void accountFilterUsesAccountQuery() {
-            service.findAll(FROM, TO, AccountType.SAVINGS, null);
-            verify(repository).findByTransactionDateBetweenAndAccountTypeOrderByTransactionDateDescIdDesc(
-                    FROM, TO, AccountType.SAVINGS);
+            service.findAll(FROM, TO, AccountType.SAVINGS, null, PAGEABLE);
+            verify(repository).findByTransactionDateBetweenAndAccountType(FROM, TO, AccountType.SAVINGS, PAGEABLE);
         }
 
         @Test
         void categoryFilterUsesCategoryQuery() {
-            service.findAll(FROM, TO, null, Category.GROCERIES);
-            verify(repository).findByTransactionDateBetweenAndCategoryOrderByTransactionDateDescIdDesc(
-                    FROM, TO, Category.GROCERIES);
+            service.findAll(FROM, TO, null, Category.GROCERIES, PAGEABLE);
+            verify(repository).findByTransactionDateBetweenAndCategory(FROM, TO, Category.GROCERIES, PAGEABLE);
         }
 
         @Test
         void bothFiltersUseCombinedQuery() {
-            service.findAll(FROM, TO, AccountType.CHECKING, Category.DINING_OUT);
-            verify(repository)
-                    .findByTransactionDateBetweenAndAccountTypeAndCategoryOrderByTransactionDateDescIdDesc(
-                            FROM, TO, AccountType.CHECKING, Category.DINING_OUT);
+            service.findAll(FROM, TO, AccountType.CHECKING, Category.DINING_OUT, PAGEABLE);
+            verify(repository).findByTransactionDateBetweenAndAccountTypeAndCategory(
+                    FROM, TO, AccountType.CHECKING, Category.DINING_OUT, PAGEABLE);
         }
 
         @Test
         void returnsRepositoryResults() {
-            List<Transaction> expected = List.of(new Transaction(
+            Page<Transaction> expected = new PageImpl<>(List.of(new Transaction(
                     "d", new BigDecimal("1.00"), DATE,
-                    AccountType.CHECKING, null, Category.GROCERIES, TransactionType.EXPENSE));
-            when(repository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(FROM, TO))
-                    .thenReturn(expected);
+                    AccountType.CHECKING, null, Category.GROCERIES, TransactionType.EXPENSE)));
+            when(repository.findByTransactionDateBetween(FROM, TO, PAGEABLE)).thenReturn(expected);
 
-            assertThat(service.findAll(FROM, TO, null, null)).isEqualTo(expected);
+            assertThat(service.findAll(FROM, TO, null, null, PAGEABLE)).isEqualTo(expected);
         }
     }
 }
