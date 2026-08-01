@@ -259,5 +259,5 @@ open the loopback selector pipe an embedded HTTP mock needs). Full breakdown and
 
 Auth (Spring Security), user-manageable accounts/categories, recurring transactions, multi-currency,
 a price-history table for true historical net worth, realized-gain reporting UI, Flyway migrations,
-pagination, and a dynamic-resolver gateway config. Shelved feature spec:
+and a dynamic-resolver gateway config. Shelved feature spec:
 [future/STATEMENT_IMPORT.md](future/STATEMENT_IMPORT.md).
