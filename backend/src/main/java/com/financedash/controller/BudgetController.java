@@ -49,7 +49,7 @@ public class BudgetController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         Period period = Period.resolve(range, from, to, LocalDate.now());
-        return budgetService.progress(period.from(), period.to());
+        return budgetService.progress(range, period.from(), period.to());
     }
 
     @GetMapping("/{id}")

@@ -108,12 +108,24 @@ Takes the **same** `range` / `from` / `to` params as `GET /api/balances`
 (defaults to the last month). Returns each budget with its spend for the
 period, as `BudgetProgressResponse[]`:
 ```json
-[{ "id": 1, "name": "Food", "value": 400.00, "categories": ["GROCERIES", "DINING_OUT"],
-   "spent": 150.00, "remaining": 250.00, "from": "2026-06-25", "to": "2026-07-24" }]
+[{ "id": 1, "name": "Food", "value": 400.00, "periodValue": 394.22,
+   "categories": ["GROCERIES", "DINING_OUT"],
+   "spent": 150.00, "remaining": 244.22, "from": "2026-07-04", "to": "2026-08-02" }]
 ```
-`spent` = Σ EXPENSE amounts in the budget's categories over `[from, to]`;
-`remaining` = `value − spent` (negative when over budget). See
-[Data Model](DATA_MODEL.md#entity-budget).
+`value` is always the raw monthly target (also what `GET /api/budgets` and the
+edit form use — never scaled). `periodValue` prorates `value` to the length of
+`[from, to]`: `daysInPeriod / 30.44` (a nominal average days/month), rounded to
+2dp. `spent` = Σ EXPENSE amounts in the budget's categories over `[from, to]`;
+`remaining` = `periodValue − spent` (negative when over budget).
+
+Worked example above: a 30-day window → `factor = 30 / 30.44 ≈ 0.9855` →
+`periodValue = 400.00 × 0.9855 ≈ 394.22`; `remaining = 394.22 − 150.00 = 244.22`.
+
+For `range=ALL`, the window otherwise starts at `1970-01-01` (a degenerate
+~56-year span to prorate against); `periodValue` instead scales from the
+system's earliest transaction date, falling back to a single day if there are
+no transactions yet. See [Data Model](DATA_MODEL.md#entity-budget) for the full
+formula and rationale.
 
 ### `GET /api/budgets/{id}`
 Single `BudgetResponse`, or 404.

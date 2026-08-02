@@ -14,6 +14,7 @@ import com.financedash.domain.Transaction;
 import com.financedash.domain.TransactionType;
 import com.financedash.dto.BudgetProgressResponse;
 import com.financedash.dto.BudgetRequest;
+import com.financedash.dto.TimeRange;
 import com.financedash.exception.ResourceNotFoundException;
 import com.financedash.repository.BudgetRepository;
 import com.financedash.repository.TransactionRepository;
@@ -34,8 +35,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class BudgetServiceTest {
 
-    private static final LocalDate FROM = LocalDate.of(2026, 1, 1);
-    private static final LocalDate TO = LocalDate.of(2026, 12, 31);
+    // A 30-day window: daysInPeriod = 30, factor = 30 / 30.44 ≈ 0.9855453351 (scale 10, HALF_UP).
+    private static final LocalDate FROM = LocalDate.of(2026, 7, 4);
+    private static final LocalDate TO = LocalDate.of(2026, 8, 2);
     private static final LocalDate DATE = LocalDate.of(2026, 6, 1);
 
     @Mock
@@ -56,6 +58,12 @@ class BudgetServiceTest {
     private static Transaction tx(TransactionType type, Category category, String amount) {
         return new Transaction(
                 "t", new BigDecimal(amount), DATE, AccountType.CHECKING, null, category, type);
+    }
+
+    private static Transaction txOn(LocalDate date) {
+        return new Transaction(
+                "t", new BigDecimal("1.00"), date, AccountType.CHECKING, null, Category.GROCERIES,
+                TransactionType.EXPENSE);
     }
 
     @Nested
@@ -118,15 +126,17 @@ class BudgetServiceTest {
             when(budgetRepository.findAllByOrderByNameAsc()).thenReturn(List.of(b));
             when(transactionRepository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(FROM, TO))
                     .thenReturn(inPeriod);
-            return service.progress(FROM, TO).get(0);
+            return service.progress(null, FROM, TO).get(0);
         }
 
         @Test
         void matchingExpenseAddsToSpent() {
+            // periodValue = 400.00 * 0.9855453351 = 394.21813404 → 394.22
             Budget b = budget(1L, "Food", "400.00", EnumSet.of(Category.GROCERIES));
             BudgetProgressResponse p = progressFor(b, List.of(tx(TransactionType.EXPENSE, Category.GROCERIES, "50.00")));
+            assertThat(p.periodValue()).isEqualByComparingTo("394.22");
             assertThat(p.spent()).isEqualByComparingTo("50.00");
-            assertThat(p.remaining()).isEqualByComparingTo("350.00");
+            assertThat(p.remaining()).isEqualByComparingTo("344.22");
         }
 
         @Test
@@ -135,7 +145,7 @@ class BudgetServiceTest {
             Budget b = budget(1L, "Food", "400.00", EnumSet.of(Category.SALARY));
             BudgetProgressResponse p = progressFor(b, List.of(tx(TransactionType.INCOME, Category.SALARY, "3000.00")));
             assertThat(p.spent()).isEqualByComparingTo("0");
-            assertThat(p.remaining()).isEqualByComparingTo("400.00");
+            assertThat(p.remaining()).isEqualByComparingTo("394.22");
         }
 
         @Test
@@ -147,13 +157,14 @@ class BudgetServiceTest {
 
         @Test
         void sumsAcrossMultipleMatchingCategoriesAndGoesOverBudget() {
+            // periodValue = 100.00 * 0.9855453351 = 98.55453351 → 98.55
             Budget b = budget(1L, "Food", "100.00", EnumSet.of(Category.GROCERIES, Category.DINING_OUT));
             BudgetProgressResponse p = progressFor(b, List.of(
                     tx(TransactionType.EXPENSE, Category.GROCERIES, "80.00"),
                     tx(TransactionType.EXPENSE, Category.DINING_OUT, "45.00"),
                     tx(TransactionType.EXPENSE, Category.TRAVEL, "500.00")));
             assertThat(p.spent()).isEqualByComparingTo("125.00");
-            assertThat(p.remaining()).isEqualByComparingTo("-25.00"); // over budget → negative remaining
+            assertThat(p.remaining()).isEqualByComparingTo("-26.45"); // over budget → negative remaining
         }
 
         @Test
@@ -161,7 +172,47 @@ class BudgetServiceTest {
             when(budgetRepository.findAllByOrderByNameAsc()).thenReturn(List.of());
             when(transactionRepository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(FROM, TO))
                     .thenReturn(List.of(tx(TransactionType.EXPENSE, Category.GROCERIES, "50.00")));
-            assertThat(service.progress(FROM, TO)).isEmpty();
+            assertThat(service.progress(null, FROM, TO)).isEmpty();
+        }
+    }
+
+    @Nested
+    class AllTimeProration {
+
+        @Test
+        void allTimeScalesFromEarliestTransactionNotTheEpoch() {
+            // TimeRange.ALL resolves `from` to 1970-01-01, but scaling should ignore that and use
+            // the system's earliest transaction date instead — here, 30 days before `to`, giving
+            // the same factor (≈0.9855453351) as the Progress 30-day-window tests above.
+            LocalDate epochFrom = LocalDate.of(1970, 1, 1);
+            LocalDate earliestTxDate = FROM; // 2026-07-04, 30 days before TO
+            Budget b = budget(1L, "Food", "400.00", EnumSet.of(Category.GROCERIES));
+            when(budgetRepository.findAllByOrderByNameAsc()).thenReturn(List.of(b));
+            when(transactionRepository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(epochFrom, TO))
+                    .thenReturn(List.of());
+            when(transactionRepository.findFirstByOrderByTransactionDateAsc())
+                    .thenReturn(Optional.of(txOn(earliestTxDate)));
+
+            BudgetProgressResponse p = service.progress(TimeRange.ALL, epochFrom, TO).get(0);
+
+            assertThat(p.periodValue()).isEqualByComparingTo("394.22");
+            assertThat(p.from()).isEqualTo(epochFrom); // the queried window is unchanged, only scaling is
+        }
+
+        @Test
+        void allTimeWithNoTransactionsFallsBackToASingleDayWindow() {
+            // No transactions anywhere yet → scale from `to` itself: factor = 1 / 30.44.
+            // 3044.00 * (1 / 30.44) = 100.00 exactly.
+            LocalDate epochFrom = LocalDate.of(1970, 1, 1);
+            Budget b = budget(1L, "Food", "3044.00", EnumSet.of(Category.GROCERIES));
+            when(budgetRepository.findAllByOrderByNameAsc()).thenReturn(List.of(b));
+            when(transactionRepository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(epochFrom, TO))
+                    .thenReturn(List.of());
+            when(transactionRepository.findFirstByOrderByTransactionDateAsc()).thenReturn(Optional.empty());
+
+            BudgetProgressResponse p = service.progress(TimeRange.ALL, epochFrom, TO).get(0);
+
+            assertThat(p.periodValue()).isEqualByComparingTo("100.00");
         }
     }
 }
