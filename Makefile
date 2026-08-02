@@ -4,8 +4,8 @@ COMPOSE       := docker compose
 PROD_COMPOSE  := $(COMPOSE) -p $(PROD_PROJECT)
 TEST_COMPOSE  := $(COMPOSE) -p $(TEST_PROJECT) --env-file .env.test
 
-.PHONY: build up down restart logs ps clean \
-        build-test up-test down-test restart-test logs-test ps-test clean-test
+.PHONY: build up down restart logs ps clean up-data \
+        build-test up-test down-test restart-test logs-test ps-test clean-test up-test-data
 
 # ── Production (Cloudflare tunnel — ports from .env) ────────────────────────
 
@@ -31,6 +31,11 @@ ps:
 clean:
 	$(PROD_COMPOSE) down -v
 
+## Bring prod up, then POST dummy transactions via the running API (see scripts/seed-dummy-transactions.sh).
+## Not stored in any volume/migration -- just curl calls against the real endpoint after boot.
+up-data: up
+	bash scripts/seed-dummy-transactions.sh prod
+
 # ── Test environment (browser: http://localhost:9090) ───────────────────────
 
 build-test:
@@ -54,3 +59,8 @@ ps-test:
 ## Wipe test data (destructive)
 clean-test:
 	$(TEST_COMPOSE) down -v
+
+## Bring the test stack up, then POST dummy transactions via the running API (see scripts/seed-dummy-transactions.sh).
+## Not stored in any volume/migration -- just curl calls against the real endpoint after boot.
+up-test-data: up-test
+	bash scripts/seed-dummy-transactions.sh test

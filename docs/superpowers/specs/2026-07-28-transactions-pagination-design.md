@@ -165,23 +165,31 @@ CREATE INDEX IF NOT EXISTS idx_transactions_amount ON transactions (amount);
 ## Test-environment seed data (nice-to-have)
 
 Pagination and sorting are hard to *see* against an empty table — you can't page through, tie-break,
-or eyeball a `DATE`-vs-`AMOUNT` sort with three rows. It would be very useful if launching the
-isolated test stack (`make up-test`, `-p big4-test`) loaded a batch of **dummy transactions** on
-deploy, purely for testing and visual verification of this feature.
+or eyeball a `DATE`-vs-`AMOUNT` sort with three rows. `make up-data` / `make up-test-data` bring up
+the respective stack and then load a batch of **dummy transactions**, purely for testing and visual
+verification of this feature.
 
-- **Scope it to the test environment only** — never the production stack. The two share one
-  `docker-compose.yml` but run as separate Compose projects with separate volumes; the seed must not
-  reach `-p big4` / `.env`.
 - **Enough rows to actually exercise paging**: several pages' worth at the default `size=20`
-  (~50–100+ transactions), spanning multiple dates (including deliberate date **and** amount ties so
+  (~50 transactions), spanning multiple dates (including deliberate date **and** amount ties so
   the `id DESC` tiebreak is observable), a spread of `accountType`/`category` values, and a range of
-  amounts so `sortBy=AMOUNT` visibly reorders.
-- **Mechanism: a seeding step in the `make up-test` target.** Decided over a profiled Flyway
-  migration or a gated `data.sql` — keeps the seed entirely inside the test-stack tooling (the
-  `Makefile`) rather than inside the app's migration history, so there's no risk of a test-only
-  migration file ever being picked up by the production `db/migration` scan. This is a
-  developer-convenience add-on to the feature, out of the critical path; it can ship in the same PR
-  or a follow-up.
+  amounts so `sortBy=AMOUNT` visibly reorders. Implemented as `scripts/dummy-transactions.jsonl`
+  (49 rows, checked into the repo, not generated at seed time).
+- **Mechanism: `scripts/seed-dummy-transactions.sh`, driven by curl against the running API** —
+  not a Flyway migration, not a `data.sql`, and nothing written to any Docker volume. The script
+  waits (with a bounded timeout) for the gateway to answer, then `POST`s each fixture row to the
+  real `/api/transactions` endpoint, so seeded rows pass through the same validation as anything a
+  user types in. The only artifact is the checked-in `.jsonl` file; there is no seed state living in
+  Postgres outside of rows created the normal way.
+- **Available for both stacks, as two explicit opt-in targets**: `make up-data` (prod, `-p big4`,
+  `.env`) and `make up-test-data` (test, `-p big4-test`, `.env.test`). Each reads `GATEWAY_PORT` from
+  its own env file. Earlier drafts of this section scoped seeding to the test stack only, because a
+  migration- or `data.sql`-based mechanism risked a test-only file leaking into the production
+  `db/migration` scan. The curl-based mechanism doesn't have that failure mode — there is nothing for
+  a stack to accidentally pick up — and `make up`/`make up-test` alone never seed anything, only the
+  explicit `-data` targets do. Running dummy data into the live production deployment is still a
+  choice you have to make on purpose (`make up-data`), it just isn't blocked by the tooling.
+- This is a developer-convenience add-on to the feature, out of the critical path; it shipped as a
+  follow-up after the core pagination work.
 
 ## Docs
 
@@ -208,3 +216,9 @@ out-of-critical-path add-on, not a gate on the core work.
   non-trivial dataset; test-stack-only, mechanism deferred to implementation.
 - 2026-08-01: seed-data mechanism decided — a seeding step inside the `make up-test` target, not a
   Flyway migration or `data.sql`, so it can never leak into the production migration path.
+- 2026-08-02: seed-data implemented as `scripts/seed-dummy-transactions.sh` (curl against the running
+  API, not a DB-level load) plus `scripts/dummy-transactions.jsonl` (49-row static fixture), wired to
+  two explicit targets: `make up-test-data` and `make up-data`. Extended to the production stack —
+  the curl-based mechanism has no path for a seed to leak in unintentionally, unlike the
+  migration-based mechanisms this section originally ruled out, so the earlier test-only restriction
+  no longer applies; seeding prod is still opt-in only, never implied by `make up`.
