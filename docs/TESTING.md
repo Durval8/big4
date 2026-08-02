@@ -35,7 +35,15 @@ Maven-Central settings override — see the repo memory note.)
 - `FinanceDashApplicationIT` — full-stack CRUD, validation rejections, worked-example balances, INVESTING-transfer rejection.
 - `BudgetIT` — CRUD + period-scoped progress.
 - `InvestmentMessagingIT` — a **raw JSON message on the exchange is converted and persisted** into
-  `investment_cash_flow` / `investment_valuation` (the end-to-end consumer path + Jackson conversion).
+  `investment_cash_flow` / `investment_valuation` **and the user-visible `transactions` ledger row**
+  (the end-to-end consumer path + Jackson conversion). Also covers the symbol-less message shape an
+  older service build emits. Not `@Transactional` (the listener commits on its own thread), so it
+  cleans the shared container on the way out as well as in — otherwise its ledger rows leak into
+  `TransactionRepositoryIT`'s counts.
+- `InvestmentBackfillIT` — acceptance test for `V4__backfill_investment_transactions.sql`. Executes
+  **the migration file itself** (not a transcription) against a seeded legacy state and asserts
+  balances are unchanged across it, cash-outs stay out of `spending`, the generated rows carry the
+  right shape, and re-running doesn't duplicate.
 
 ## Investments service
 

@@ -91,12 +91,20 @@ has no `lint` script) — don't invent one or assume a config file for it exists
 
 ## Architecture notes that aren't obvious from any single file
 
-- **`AccountType` has three values (`CHECKING`, `SAVINGS`, `INVESTING`) but `INVESTING` is not a
-  legal value on a `Transaction`** — `TransactionService` rejects it. `INVESTING` survives purely
-  as the dashboard's reflection of investments-service holdings value. If you're touching
-  transaction validation, don't relax this.
+- **`INVESTING` is rejected on any *user-created* `Transaction`** — `TransactionService.validate()`
+  throws for it as both `accountType` and `linkedAccountType`, on every API path. **Don't relax
+  that.** But it *does* legitimately appear on **system-generated rows**: `InvestmentCashLegConsumer`
+  writes a TRANSFER (funding account → INVESTING on a buy, INVESTING → SAVINGS on a cash-out) via
+  the repository, deliberately bypassing `validate()`. Those rows are marked by a non-null
+  `Transaction.sourceEventId` and are read-only (400 on edit/delete). If you see `AccountType.INVESTING`
+  in that consumer, it is intentional — see `docs/DATA_MODEL.md#investing-cash-legs-in-the-ledger`.
+- **Cash balances come from `transactions`, `netInvestment` from the projection.** Since investing
+  cash legs are TRANSFER rows, `BalanceService.cashBalance()` needs no cash-flow term — adding one
+  back double-counts. `investment_cash_flow` survives *only* to drive `netInvestment`. Related:
+  `spending` must exclude system-generated rows, because a cash-out is a TRANSFER into SAVINGS and
+  would otherwise match its predicate.
 - **Investing math has two separate accumulators that must not be collapsed**: `netCashInvested`
-  (cash flow: Σ FUND − Σ CASH_OUT; drives the backend's `netInvestment` and cash balances) vs.
+  (cash flow: Σ FUND − Σ CASH_OUT; drives the backend's `netInvestment`) vs.
   `costBasis`/`avgCost` (accounting cost of shares still held; drives `positionChangePct`). Mixing
   these back together reintroduces the %-skew bug the share-based rework fixed — see
   `docs/INVESTMENT_PRICING.md#average-cost-accounting-fixes-the-skew`.
@@ -133,7 +141,10 @@ has no `lint` script) — don't invent one or assume a config file for it exists
   there is no `@Autowired` field injection anywhere in either module. Keep new classes consistent.
 - **No service class is `@Transactional`** — ties to the eager-fetch/open-in-view note above; don't
   add `@Transactional` to a new service without first re-checking whether that assumption still
-  holds for what you're building.
+  holds for what you're building. The one deliberate exception is
+  `InvestmentCashLegConsumer.handle()`: it's a message consumer (maps no response, so the
+  lazy-loading rationale doesn't apply) and it must write its two rows atomically, or a partial
+  failure strands the message behind the idempotency guard.
 
 ## Continuous improvement of Claude Code workflows
 

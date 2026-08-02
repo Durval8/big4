@@ -13,13 +13,16 @@ import com.financedash.repository.TransactionRepository;
 import com.financedash.service.BalanceService;
 import com.financedash.support.AbstractPostgresContainerTest;
 import jakarta.persistence.EntityManager;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,9 +36,10 @@ import org.springframework.transaction.annotation.Transactional;
  * — so these tests reproduce the pre-migration arithmetic by hand and assert the post-migration
  * service agrees.
  *
- * <p>Note the migration itself already ran (Flyway, at context startup) against whatever the test
- * DB contained, so these tests exercise the same SQL by inserting flows and invoking the equivalent
- * insert, rather than by re-running Flyway.
+ * <p>Flyway already applied V4 at context startup, against an empty table. These tests therefore
+ * seed a legacy state (transactions + cash flows, no ledger rows for the legs) and re-execute the
+ * migration file itself — see {@link #runBackfill()} — which is also why the statement has to be
+ * re-runnable without duplicating.
  */
 @SpringBootTest
 @Transactional
@@ -58,26 +62,16 @@ class InvestmentBackfillIT extends AbstractPostgresContainerTest {
         cashFlowRepository.deleteAll();
     }
 
-    /** The exact statement from V4, so the test exercises the migration's logic rather than a paraphrase. */
-    private void runBackfill() {
-        entityManager.createNativeQuery("""
-                INSERT INTO transactions (
-                    description, amount, transaction_date, account_type, linked_account_type,
-                    category, transaction_type, source_event_id, created_at, updated_at
-                )
-                SELECT
-                    CASE f.type WHEN 'FUND' THEN 'Investment funding'
-                                WHEN 'CASH_OUT' THEN 'Investment cash-out' END,
-                    f.amount, f.flow_date,
-                    CASE f.type WHEN 'FUND' THEN f.account_type WHEN 'CASH_OUT' THEN 'INVESTING' END,
-                    CASE f.type WHEN 'FUND' THEN 'INVESTING' WHEN 'CASH_OUT' THEN 'SAVINGS' END,
-                    NULL, 'TRANSFER', f.event_id, now(), now()
-                FROM investment_cash_flow f
-                WHERE f.type IN ('FUND', 'CASH_OUT')
-                  AND f.account_type IS NOT NULL
-                  AND f.flow_date IS NOT NULL
-                  AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.source_event_id = f.event_id)
-                """).executeUpdate();
+    /**
+     * Runs the <b>actual</b> V4 file rather than a transcription of it, so the migration and its
+     * only real test cannot drift apart. This is a once-per-database operation against live money
+     * data — a copy that silently diverged would be worse than no test.
+     */
+    private void runBackfill() throws IOException {
+        String sql = new String(
+                new ClassPathResource("db/migration/V4__backfill_investment_transactions.sql")
+                        .getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        entityManager.createNativeQuery(sql).executeUpdate();
         entityManager.flush();
         entityManager.clear();
     }
@@ -97,7 +91,7 @@ class InvestmentBackfillIT extends AbstractPostgresContainerTest {
     }
 
     @Test
-    void balancesAreUnchangedAcrossTheMigration() {
+    void balancesAreUnchangedAcrossTheMigration() throws IOException {
         givenLegacyState();
 
         // Balances as the OLD code computed them: ledger effect, then − ΣFUND(checking), + ΣCASH_OUT(savings).
@@ -116,7 +110,7 @@ class InvestmentBackfillIT extends AbstractPostgresContainerTest {
     }
 
     @Test
-    void backfilledCashOutDoesNotInflateSpending() {
+    void backfilledCashOutDoesNotInflateSpending() throws IOException {
         givenLegacyState();
         runBackfill();
 
@@ -126,7 +120,7 @@ class InvestmentBackfillIT extends AbstractPostgresContainerTest {
     }
 
     @Test
-    void backfilledRowsCarryTheRightShapeAndAreMarkedSystemGenerated() {
+    void backfilledRowsCarryTheRightShapeAndAreMarkedSystemGenerated() throws IOException {
         givenLegacyState();
         runBackfill();
 
@@ -145,7 +139,7 @@ class InvestmentBackfillIT extends AbstractPostgresContainerTest {
     }
 
     @Test
-    void rerunningTheBackfillDoesNotDuplicateRows() {
+    void rerunningTheBackfillDoesNotDuplicateRows() throws IOException {
         givenLegacyState();
         runBackfill();
         long afterFirst = transactionRepository.count();
