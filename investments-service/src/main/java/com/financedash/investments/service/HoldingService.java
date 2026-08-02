@@ -61,8 +61,9 @@ public class HoldingService {
 
     // --- reads ---
 
+    /** Active positions only -- a cashed-out holding is kept as history, not shown here. */
     public List<HoldingResponse> list() {
-        return holdingRepository.findAllByOrderByStockSymbolAsc().stream()
+        return holdingRepository.findByStatusOrderByStockSymbolAsc(HoldingStatus.OPEN).stream()
                 .map(HoldingResponse::from)
                 .toList();
     }
