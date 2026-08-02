@@ -46,7 +46,7 @@ class OutboxRelayIT extends AbstractContainersTest {
     void relayDeliversBothStreamsAndMarksPublished() throws Exception {
         outboxWriter.enqueueCashLeg(CashLegCommand.of(
                 "evt-1", InvestmentEventType.FUND.name(), CashAccount.CHECKING.name(),
-                new BigDecimal("100.00"), LocalDate.of(2026, 7, 24)));
+                new BigDecimal("100.00"), LocalDate.of(2026, 7, 24), "AAPL"));
         outboxWriter.enqueueValueSnapshot(ValueSnapshot.of(new BigDecimal("100.00"), Instant.now()));
 
         relay.publishPending();
@@ -61,6 +61,7 @@ class OutboxRelayIT extends AbstractContainersTest {
         assertThat(cashLeg.legType()).isEqualTo("FUND");
         assertThat(cashLeg.account()).isEqualTo("CHECKING");
         assertThat(cashLeg.amount()).isEqualByComparingTo("100.00");
+        assertThat(cashLeg.stockSymbol()).isEqualTo("AAPL");
         assertThat(cashLeg.schemaVersion()).isEqualTo(InvestmentsMessaging.SCHEMA_VERSION);
 
         ValueSnapshot snapshot = objectMapper.readValue(valueMsg.getBody(), ValueSnapshot.class);

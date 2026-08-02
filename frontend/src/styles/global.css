@@ -602,6 +602,14 @@ select {
   color: var(--color-negative);
 }
 
+/* Stands in for the action buttons on system-generated (investment) rows, which can't be edited. */
+.row-actions__locked {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  cursor: default;
+}
+
 /* Budgets */
 .budget-grid {
   display: grid;

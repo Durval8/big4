@@ -259,17 +259,55 @@ class TransactionServiceTest {
 
         @Test
         void deleteRemovesExisting() {
-            when(repository.existsById(1L)).thenReturn(true);
+            Transaction txn = new Transaction(
+                    "d", new BigDecimal("1.00"), DATE,
+                    AccountType.CHECKING, null, Category.GROCERIES, TransactionType.EXPENSE);
+            when(repository.findById(1L)).thenReturn(Optional.of(txn));
             service.delete(1L);
             verify(repository).deleteById(1L);
         }
 
         @Test
         void deleteThrowsWhenMissing() {
-            when(repository.existsById(1L)).thenReturn(false);
+            when(repository.findById(1L)).thenReturn(Optional.empty());
             assertThatThrownBy(() -> service.delete(1L))
                     .isInstanceOf(ResourceNotFoundException.class);
             verify(repository, never()).deleteById(any());
+        }
+    }
+
+    /**
+     * Rows generated from an investments-service cash leg are the source of truth for that cash
+     * movement while the service still holds the position — mutating one would desync the two.
+     */
+    @Nested
+    class SystemGeneratedRowsAreReadOnly {
+
+        private Transaction investmentRow() {
+            return new Transaction("Bought AAPL", new BigDecimal("500.00"), DATE,
+                    AccountType.CHECKING, AccountType.INVESTING, null, TransactionType.TRANSFER, "evt-1");
+        }
+
+        @Test
+        void deleteIsRejected() {
+            when(repository.findById(1L)).thenReturn(Optional.of(investmentRow()));
+
+            assertThatThrownBy(() -> service.delete(1L))
+                    .isInstanceOf(InvalidTransactionException.class)
+                    .hasMessageContaining("cannot be edited or deleted");
+            verify(repository, never()).deleteById(any());
+        }
+
+        @Test
+        void updateIsRejected() {
+            when(repository.findById(1L)).thenReturn(Optional.of(investmentRow()));
+
+            assertThatThrownBy(() -> service.update(1L, new TransactionRequest(
+                    "hacked", new BigDecimal("1.00"), DATE, AccountType.CHECKING, null,
+                    Category.GROCERIES, TransactionType.EXPENSE)))
+                    .isInstanceOf(InvalidTransactionException.class)
+                    .hasMessageContaining("cannot be edited or deleted");
+            verify(repository, never()).save(any());
         }
     }
 

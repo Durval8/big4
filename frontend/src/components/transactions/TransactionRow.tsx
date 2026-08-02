@@ -34,12 +34,20 @@ export function TransactionRow({ transaction, onEdit, onDelete }: TransactionRow
         {formatCurrency(transaction.amount)}
       </td>
       <td>
-        <div className="row-actions">
-          <button onClick={() => onEdit(transaction)}>Edit</button>
-          <button className="danger" onClick={() => onDelete(transaction)}>
-            Delete
-          </button>
-        </div>
+        {transaction.sourceEventId ? (
+          // Generated from an investment buy/cash-out. The API rejects edits and deletes on these
+          // (the investments service still holds the position), so don't offer the action at all.
+          <span className="row-actions__locked" title="Generated from an investment — manage it on the Investments page">
+            From investments
+          </span>
+        ) : (
+          <div className="row-actions">
+            <button onClick={() => onEdit(transaction)}>Edit</button>
+            <button className="danger" onClick={() => onDelete(transaction)}>
+              Delete
+            </button>
+          </div>
+        )}
       </td>
     </tr>
   );
