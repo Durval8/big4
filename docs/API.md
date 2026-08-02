@@ -137,7 +137,8 @@ Finnhub; buys/cash-outs reach the backend as RabbitMQ messages that fold into ca
 strings.
 
 ### `GET /api/investments`
-All holdings (symbol-ordered), as `HoldingResponse[]`:
+Open holdings only (symbol-ordered) — a cashed-out holding is kept as history but excluded from
+this list, as `HoldingResponse[]`:
 ```json
 [{ "id": "6a64…", "stockSymbol": "AAPL", "quantity": 0.300282, "avgCost": 333.0203,
    "latestPrice": 333.0200, "currentValue": 100.00, "netCashInvested": 100.00,
@@ -166,9 +167,12 @@ Correction only: `{ "stockSymbol", "quantity" }` — fix the symbol and/or share
 source of truth, so there's no value edit). 400 if cashed out; 404 if missing.
 
 ### `POST /api/investments/{id}/cash-out`
-Body: `{ "amount" }` (≤ current position) — sells that value of shares, moves the proceeds to SAVINGS,
-records realized gain; a fully cashed-out holding becomes `CASHED_OUT` (kept as history). 400 if the
-amount exceeds the position or the holding is already cashed out.
+Body: `{ "percentage" }` — percentage of the *current* position to sell, `(0, 100]`. Proceeds
+(`percentage% × live currentValue`, computed at request time, not client-supplied) move to SAVINGS
+and realized gain is recorded; `percentage=100` always closes the holding to `CASHED_OUT` (kept as
+history) regardless of any price movement since the request was composed — quantity, not a money
+amount, drives the full/partial decision, so there's nothing for a price refresh to race against.
+400 if `percentage` is outside `(0, 100]` or the holding is already cashed out.
 
 ### `POST /api/investments/{id}/price`
 Body: `{ "price" }` — set a manual price for an `UNRESOLVED` holding (the only way it gets valued).

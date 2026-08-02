@@ -84,8 +84,8 @@ export function InvestmentsPage() {
         <CashOutDialog
           investment={cashingOut}
           onCancel={() => setCashingOut(null)}
-          onConfirm={async (amount) => {
-            await cashOut(cashingOut.id, amount);
+          onConfirm={async (percentage) => {
+            await cashOut(cashingOut.id, { percentage });
             setCashingOut(null);
             void news.pollForUpdate(); // a full cash-out drops the holding's news
           }}

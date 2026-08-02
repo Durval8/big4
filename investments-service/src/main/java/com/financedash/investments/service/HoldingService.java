@@ -41,6 +41,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class HoldingService {
 
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
+
     private final HoldingRepository holdingRepository;
     private final StockPriceProvider priceProvider;
     private final OutboxWriter outbox;
@@ -150,16 +152,30 @@ public class HoldingService {
         if (price == null || price.signum() <= 0) {
             throw new InvalidInvestmentException("No price available; set a manual price before cashing out");
         }
-        BigDecimal amount = Precision.money(request.amount());
-        BigDecimal currentValue = h.currentValue();
-        if (amount.compareTo(currentValue) > 0) {
-            throw new InvalidInvestmentException("Cash-out amount exceeds the current position");
-        }
 
-        boolean full = amount.compareTo(currentValue) == 0;
+        // Percentage of the CURRENT quantity, not a money amount matched against a live-priced
+        // value: quantity only moves via buy/cash-out (never the price-refresh job), so 100 always
+        // means "every remaining share" with no comparison against anything price-derived, and no
+        // window in which a refresh landing between request-compose and request-handling matters.
+        BigDecimal percentage = request.percentage();
+        // CashOutRequest's own @DecimalMin/@DecimalMax only fire behind @Valid at the controller;
+        // guard here too so a direct service call can't sell more shares than the holding has.
+        if (percentage.signum() <= 0 || percentage.compareTo(HUNDRED) > 0) {
+            throw new InvalidInvestmentException("percentage must be greater than 0 and at most 100");
+        }
+        boolean full = percentage.compareTo(HUNDRED) == 0;
         BigDecimal sharesSold = full
                 ? h.getQuantity()
-                : amount.divide(price, Precision.QUANTITY, Precision.ROUNDING);
+                : Precision.quantity(h.getQuantity().multiply(percentage)
+                        .divide(HUNDRED, Precision.QUANTITY + 2, Precision.ROUNDING));
+        if (!full && sharesSold.compareTo(h.getQuantity()) >= 0) {
+            // A percentage very close to (but not exactly) 100 rounded up to the full quantity --
+            // close it the same clean way as an exact 100 rather than leave a zero/negative residual.
+            full = true;
+            sharesSold = h.getQuantity();
+        }
+
+        BigDecimal amount = full ? h.currentValue() : Precision.money(sharesSold.multiply(price));
         BigDecimal costRemoved = full
                 ? h.getCostBasis()
                 : Precision.money(sharesSold.multiply(nz(h.getAvgCost())));
