@@ -119,6 +119,9 @@ class BudgetIT extends AbstractPostgresContainerTest {
         assertThat(result).hasSize(1);
         BudgetProgressResponse food = result.get(0);
         assertThat(food.spent()).isEqualByComparingTo("150.00");
-        assertThat(food.remaining()).isEqualByComparingTo("250.00");
+        // A 365-day window: factor = 365 / 30.44 ≈ 11.9908015768.
+        // periodValue = 400.00 * 11.9908015768 = 4796.32063072 → 4796.32.
+        assertThat(food.periodValue()).isEqualByComparingTo("4796.32");
+        assertThat(food.remaining()).isEqualByComparingTo("4646.32");
     }
 }

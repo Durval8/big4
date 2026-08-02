@@ -107,7 +107,7 @@ A named spending target tracked against a set of categories.
 |---------------|-----------------|-----------------------------------------------------|
 | `id`          | `Long`          | generated                                          |
 | `name`        | `String`        | required, non-blank                                |
-| `value`       | `BigDecimal`    | required, `> 0` — the target/limit                 |
+| `value`       | `BigDecimal`    | required, `> 0` — the **monthly** target/limit     |
 | `categories`  | `Set<Category>` | required, non-empty — stored in a `budget_categories` join table (`@ElementCollection`, **EAGER**) |
 | `createdAt`/`updatedAt` | `Instant` | auto-managed (JPA auditing)                       |
 
@@ -116,7 +116,6 @@ A named spending target tracked against a set of categories.
 ```
 spent(budget, from, to) = Σ EXPENSE.amount   where category ∈ budget.categories
                                               and from ≤ transactionDate ≤ to
-remaining = value − spent      (negative when over budget)
 ```
 
 - **Expenses only.** Only `EXPENSE` transactions count. `INCOME` in a budget's
@@ -132,6 +131,33 @@ remaining = value − spent      (negative when over budget)
   income/expense partition of the enum in this MVP.
 - **Overlap allowed.** A category may appear in multiple budgets; each budget
   sums its own categories independently.
+
+**Period proration.** `value` is always a monthly figure, but the window the
+caller selects (`WEEK`/`MONTH`/`YEAR`/`ALL`, or an explicit `from`/`to`) can be
+any length, so `GET /api/budgets/progress` also returns a `periodValue` —
+`value` scaled to the window — and `remaining` is computed against
+`periodValue`, not `value`:
+
+```
+daysInPeriod          = days in [from, to], inclusive
+factor                = daysInPeriod / 30.44        (nominal average days/month)
+periodValue(budget)   = value × factor              (rounded HALF_UP, 2dp)
+remaining             = periodValue − spent          (negative when over budget)
+```
+
+- **`value` itself is never scaled.** `GET /api/budgets` / `GET /api/budgets/{id}`
+  (`BudgetResponse`) and the create/edit form only ever see the raw monthly
+  `value` — only `BudgetProgressResponse.periodValue` is prorated. This matters
+  because the edit form is prefilled from the progress list; if it read
+  `periodValue` instead, saving while e.g. "Last year" was selected would
+  silently overwrite the stored monthly target with a scaled number.
+- **`TimeRange.ALL` is special-cased.** Its window otherwise resolves `from` to
+  `1970-01-01` — a degenerate ~56-year span that would make `factor` enormous.
+  Instead, for `ALL` the scaling window starts at the date of the **earliest
+  transaction in the system** (not the budget's own `createdAt`), reflecting
+  how much financial history actually exists. If there are no transactions at
+  all yet, it falls back to a single-day window ending at `to`.
+- See `docs/API.md#get-apibudgetsprogress` for a worked example.
 
 Categories are fetched **EAGER** deliberately: services aren't `@Transactional`
 and `open-in-view` is off, so a lazy collection would fail to load once the
