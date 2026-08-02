@@ -117,9 +117,18 @@ has no `lint` script) — don't invent one or assume a config file for it exists
   container (new IP), the gateway may need `docker compose restart gateway` (or `make restart[-test]`)
   to pick it up. A dynamic-resolver nginx config would remove this; not yet done.
 - **Frontend uses relative `/api/...` URLs everywhere** (`VITE_API_BASE_URL` is empty in Docker) so
-  it works unmodified behind the gateway with no CORS. Locally, Vite's `server.proxy` splits
+  it works unmodified behind the gateway on one origin. Locally, Vite's `server.proxy` splits
   `/api/investments` → investments-service, `/api` → backend
   (override via `VITE_INVESTMENTS_PROXY_TARGET` / `VITE_API_PROXY_TARGET`).
+- **Same-origin does *not* mean CORS is irrelevant** — this cost a production outage. Browsers send
+  an `Origin` header on every non-GET request *including same-origin ones*, and since Spring 5.0
+  `CorsUtils.isCorsRequest()` is just "is Origin present". So every POST/PUT/DELETE is checked
+  against `WebConfig`'s allowlist, and an unlisted origin gets a bare `403 Invalid CORS request`
+  before any controller runs — while GETs (no Origin header) keep working, so it looks like one
+  broken feature rather than a total write outage. **Any deployment on a real domain must set
+  `CORS_ALLOWED_ORIGIN_PATTERNS`** to include its public origin; the localhost default hides this in
+  every local environment. Don't "fix" a CORS 403 by widening to `*` — the API is unauthenticated,
+  so that allowlist is the only thing preventing cross-site writes.
 - **Two isolated Docker Compose environments share one `docker-compose.yml`**: production
   (`-p big4`, `.env`) and a local test stack (`-p big4-test`, `.env.test`, ports offset ~1000,
   distinct `RABBITMQ_ERLANG_COOKIE`) — fully separate volumes/networks, safe to run simultaneously.
