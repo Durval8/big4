@@ -32,13 +32,14 @@ class InvestmentControllerTest {
     @MockBean
     private HoldingService service;
 
+    // 5 shares @ avgCost 10.00, latest price 15.00: currentValue 75.00, positionChangePct 50.00.
     private static HoldingResponse sample() {
         return new HoldingResponse("abc", "AAPL",
-                new BigDecimal("5.000000"), new BigDecimal("10.0000"), new BigDecimal("15.0000"),
-                new BigDecimal("75.00"), new BigDecimal("50.00"), new BigDecimal("0.00"),
-                new BigDecimal("50.00"), new BigDecimal("400.00"), PriceStatus.OK, Instant.parse("2026-07-24T00:00:00Z"),
-                HoldingStatus.OPEN, Instant.parse("2026-07-24T00:00:00Z"),
-                Instant.parse("2026-07-24T00:00:00Z"));
+                new BigDecimal("5.000000"), new BigDecimal("50.00"), new BigDecimal("10.0000"),
+                new BigDecimal("15.0000"), new BigDecimal("75.00"), new BigDecimal("50.00"),
+                new BigDecimal("0.00"), new BigDecimal("50.00"), PriceStatus.OK,
+                Instant.parse("2026-07-24T00:00:00Z"), HoldingStatus.OPEN,
+                Instant.parse("2026-07-24T00:00:00Z"), Instant.parse("2026-07-24T00:00:00Z"));
     }
 
     @Test

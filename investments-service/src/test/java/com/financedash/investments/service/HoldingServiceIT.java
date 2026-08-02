@@ -138,6 +138,23 @@ class HoldingServiceIT extends AbstractContainersTest {
     }
 
     @Test
+    void fullCashOutRemovesTheHoldingFromList() {
+        quoteReturns("10.00");
+        String closedId = service.buy(new BuyRequest("MSFT", new BigDecimal("100.00"), CashAccount.CHECKING, null))
+                .id();
+        service.buy(new BuyRequest("AAPL", new BigDecimal("50.00"), CashAccount.CHECKING, null));
+
+        service.cashOut(closedId, new CashOutRequest(new BigDecimal("100.00")));
+
+        assertThat(service.list())
+                .extracting(HoldingResponse::stockSymbol)
+                .containsExactly("AAPL")
+                .doesNotContain("MSFT");
+        // The cashed-out holding still exists (kept as history), just excluded from the active list.
+        assertThat(holdingRepository.findById(closedId)).isPresent();
+    }
+
+    @Test
     void buyingSameSymbolMergesAndAveragesCost() {
         when(provider.quote(any()))
                 .thenReturn(new Quote(new BigDecimal("10.00"), Instant.parse("2026-07-24T12:00:00Z")))

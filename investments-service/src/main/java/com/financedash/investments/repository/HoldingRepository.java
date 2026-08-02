@@ -9,7 +9,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 
 public interface HoldingRepository extends MongoRepository<Holding, String> {
 
-    List<Holding> findAllByOrderByStockSymbolAsc();
+    List<Holding> findByStatusOrderByStockSymbolAsc(HoldingStatus status);
 
     List<Holding> findByStatus(HoldingStatus status);
 
