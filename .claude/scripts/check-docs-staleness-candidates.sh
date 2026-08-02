@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Deterministic pre-filter mirroring docs-sync.md's mapping table: for each pattern of changed
 # source files, checks whether the matching doc was touched in the SAME staged diff, and reports
-# only the candidates where it wasn't. Used as the first step of the docs-staleness PreToolUse
-# hook (.claude/settings.json) so the agent step reasons about genuine candidates instead of
-# re-deriving the mapping (and re-reading the whole diff) from scratch on every commit.
+# only the candidates where it wasn't. Prints a "CANDIDATE:" block per hit.
 #
-# NOTE: this does not stop the agent hook from being invoked -- hooks in the same matcher's array
-# don't short-circuit each other. This makes each invocation faster/more precise, not less frequent.
+# Called by .claude/scripts/docs-staleness-hook.sh, which greps for "CANDIDATE:" and turns any hits
+# into a non-blocking advisory. This used to feed a `type: agent` hook that judged each candidate;
+# that hook was removed on 2026-08-01 because it could not run without Bash access and then blocked
+# every commit in the session. Consequence: nothing now distinguishes a genuine behavior change from
+# a refactor/rename/test-only change -- this script matches filenames only, so the advisory it
+# produces is a prompt to look, not a finding.
+#
 # If the mapping here changes, update docs-sync.md's table to match (and vice versa).
 
 FILES="$(git diff --cached --name-only)"

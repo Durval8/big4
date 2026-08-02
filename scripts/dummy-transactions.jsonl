@@ -1,0 +1,49 @@
+{"description": "Weekly groceries", "amount": "45.00", "transactionDate": "2026-05-04", "accountType": "SAVINGS", "linkedAccountType": null, "category": "GROCERIES", "transactionType": "EXPENSE"}
+{"description": "Bus pass", "amount": "12.50", "transactionDate": "2026-05-11", "accountType": "CHECKING", "linkedAccountType": null, "category": "TRANSPORTATION", "transactionType": "EXPENSE"}
+{"description": "Dinner out", "amount": "200.00", "transactionDate": "2026-05-11", "accountType": "CHECKING", "linkedAccountType": null, "category": "DINING_OUT", "transactionType": "EXPENSE"}
+{"description": "Electric bill", "amount": "89.99", "transactionDate": "2026-05-18", "accountType": "SAVINGS", "linkedAccountType": null, "category": "UTILITIES", "transactionType": "EXPENSE"}
+{"description": "Rent", "amount": "15.00", "transactionDate": "2026-05-25", "accountType": "CHECKING", "linkedAccountType": null, "category": "HOUSING", "transactionType": "EXPENSE"}
+{"description": "Pharmacy", "amount": "45.00", "transactionDate": "2026-06-01", "accountType": "CHECKING", "linkedAccountType": null, "category": "HEALTHCARE", "transactionType": "EXPENSE"}
+{"description": "Movie night", "amount": "12.50", "transactionDate": "2026-06-01", "accountType": "SAVINGS", "linkedAccountType": null, "category": "ENTERTAINMENT", "transactionType": "EXPENSE"}
+{"description": "New shoes", "amount": "200.00", "transactionDate": "2026-06-01", "accountType": "CHECKING", "linkedAccountType": null, "category": "SHOPPING", "transactionType": "EXPENSE"}
+{"description": "Weekend trip", "amount": "89.99", "transactionDate": "2026-06-08", "accountType": "CHECKING", "linkedAccountType": null, "category": "TRAVEL", "transactionType": "EXPENSE"}
+{"description": "Streaming service", "amount": "15.00", "transactionDate": "2026-06-15", "accountType": "SAVINGS", "linkedAccountType": null, "category": "SUBSCRIPTIONS", "transactionType": "EXPENSE"}
+{"description": "Car insurance", "amount": "45.00", "transactionDate": "2026-06-22", "accountType": "CHECKING", "linkedAccountType": null, "category": "INSURANCE", "transactionType": "EXPENSE"}
+{"description": "Misc expense", "amount": "12.50", "transactionDate": "2026-06-29", "accountType": "CHECKING", "linkedAccountType": null, "category": "OTHER_EXPENSE", "transactionType": "EXPENSE"}
+{"description": "Coffee run", "amount": "200.00", "transactionDate": "2026-07-06", "accountType": "SAVINGS", "linkedAccountType": null, "category": "GROCERIES", "transactionType": "EXPENSE"}
+{"description": "Gym membership", "amount": "89.99", "transactionDate": "2026-07-06", "accountType": "CHECKING", "linkedAccountType": null, "category": "TRANSPORTATION", "transactionType": "EXPENSE"}
+{"description": "Phone bill", "amount": "15.00", "transactionDate": "2026-07-13", "accountType": "CHECKING", "linkedAccountType": null, "category": "DINING_OUT", "transactionType": "EXPENSE"}
+{"description": "Weekly groceries", "amount": "45.00", "transactionDate": "2026-07-20", "accountType": "SAVINGS", "linkedAccountType": null, "category": "UTILITIES", "transactionType": "EXPENSE"}
+{"description": "Bus pass", "amount": "12.50", "transactionDate": "2026-07-27", "accountType": "CHECKING", "linkedAccountType": null, "category": "HOUSING", "transactionType": "EXPENSE"}
+{"description": "Dinner out", "amount": "200.00", "transactionDate": "2026-07-27", "accountType": "CHECKING", "linkedAccountType": null, "category": "HEALTHCARE", "transactionType": "EXPENSE"}
+{"description": "Electric bill", "amount": "89.99", "transactionDate": "2026-07-30", "accountType": "SAVINGS", "linkedAccountType": null, "category": "ENTERTAINMENT", "transactionType": "EXPENSE"}
+{"description": "Rent", "amount": "15.00", "transactionDate": "2026-05-04", "accountType": "CHECKING", "linkedAccountType": null, "category": "SHOPPING", "transactionType": "EXPENSE"}
+{"description": "Pharmacy", "amount": "45.00", "transactionDate": "2026-05-11", "accountType": "CHECKING", "linkedAccountType": null, "category": "TRAVEL", "transactionType": "EXPENSE"}
+{"description": "Movie night", "amount": "12.50", "transactionDate": "2026-05-11", "accountType": "SAVINGS", "linkedAccountType": null, "category": "SUBSCRIPTIONS", "transactionType": "EXPENSE"}
+{"description": "New shoes", "amount": "200.00", "transactionDate": "2026-05-18", "accountType": "CHECKING", "linkedAccountType": null, "category": "INSURANCE", "transactionType": "EXPENSE"}
+{"description": "Weekend trip", "amount": "89.99", "transactionDate": "2026-05-25", "accountType": "CHECKING", "linkedAccountType": null, "category": "OTHER_EXPENSE", "transactionType": "EXPENSE"}
+{"description": "Streaming service", "amount": "15.00", "transactionDate": "2026-06-01", "accountType": "SAVINGS", "linkedAccountType": null, "category": "GROCERIES", "transactionType": "EXPENSE"}
+{"description": "Car insurance", "amount": "45.00", "transactionDate": "2026-06-01", "accountType": "CHECKING", "linkedAccountType": null, "category": "TRANSPORTATION", "transactionType": "EXPENSE"}
+{"description": "Misc expense", "amount": "12.50", "transactionDate": "2026-06-01", "accountType": "CHECKING", "linkedAccountType": null, "category": "DINING_OUT", "transactionType": "EXPENSE"}
+{"description": "Coffee run", "amount": "200.00", "transactionDate": "2026-06-08", "accountType": "SAVINGS", "linkedAccountType": null, "category": "UTILITIES", "transactionType": "EXPENSE"}
+{"description": "Monthly salary", "amount": "2500.00", "transactionDate": "2026-06-15", "accountType": "CHECKING", "linkedAccountType": null, "category": "SALARY", "transactionType": "INCOME"}
+{"description": "Freelance project", "amount": "450.00", "transactionDate": "2026-06-22", "accountType": "SAVINGS", "linkedAccountType": null, "category": "FREELANCE_INCOME", "transactionType": "INCOME"}
+{"description": "Dividend payout", "amount": "75.50", "transactionDate": "2026-06-29", "accountType": "CHECKING", "linkedAccountType": null, "category": "INVESTMENT_INCOME", "transactionType": "INCOME"}
+{"description": "Birthday gift", "amount": "100.00", "transactionDate": "2026-07-06", "accountType": "SAVINGS", "linkedAccountType": null, "category": "GIFTS", "transactionType": "INCOME"}
+{"description": "Refund", "amount": "30.00", "transactionDate": "2026-07-06", "accountType": "CHECKING", "linkedAccountType": null, "category": "OTHER_INCOME", "transactionType": "INCOME"}
+{"description": "Monthly salary", "amount": "2500.00", "transactionDate": "2026-07-13", "accountType": "SAVINGS", "linkedAccountType": null, "category": "SALARY", "transactionType": "INCOME"}
+{"description": "Freelance project", "amount": "450.00", "transactionDate": "2026-07-20", "accountType": "CHECKING", "linkedAccountType": null, "category": "FREELANCE_INCOME", "transactionType": "INCOME"}
+{"description": "Dividend payout", "amount": "75.50", "transactionDate": "2026-07-27", "accountType": "SAVINGS", "linkedAccountType": null, "category": "INVESTMENT_INCOME", "transactionType": "INCOME"}
+{"description": "Birthday gift", "amount": "100.00", "transactionDate": "2026-07-27", "accountType": "CHECKING", "linkedAccountType": null, "category": "GIFTS", "transactionType": "INCOME"}
+{"description": "Refund", "amount": "30.00", "transactionDate": "2026-07-30", "accountType": "SAVINGS", "linkedAccountType": null, "category": "OTHER_INCOME", "transactionType": "INCOME"}
+{"description": "Move to savings", "amount": "300.00", "transactionDate": "2026-07-06", "accountType": "CHECKING", "linkedAccountType": "SAVINGS", "category": null, "transactionType": "TRANSFER"}
+{"description": "Move to checking", "amount": "150.00", "transactionDate": "2026-07-06", "accountType": "SAVINGS", "linkedAccountType": "CHECKING", "category": null, "transactionType": "TRANSFER"}
+{"description": "Move to savings", "amount": "500.00", "transactionDate": "2026-07-13", "accountType": "CHECKING", "linkedAccountType": "SAVINGS", "category": null, "transactionType": "TRANSFER"}
+{"description": "Move to checking", "amount": "45.00", "transactionDate": "2026-07-20", "accountType": "SAVINGS", "linkedAccountType": "CHECKING", "category": null, "transactionType": "TRANSFER"}
+{"description": "Move to savings", "amount": "300.00", "transactionDate": "2026-07-27", "accountType": "CHECKING", "linkedAccountType": "SAVINGS", "category": null, "transactionType": "TRANSFER"}
+{"description": "Move to checking", "amount": "150.00", "transactionDate": "2026-07-27", "accountType": "SAVINGS", "linkedAccountType": "CHECKING", "category": null, "transactionType": "TRANSFER"}
+{"description": "Move to savings", "amount": "500.00", "transactionDate": "2026-07-30", "accountType": "CHECKING", "linkedAccountType": "SAVINGS", "category": null, "transactionType": "TRANSFER"}
+{"description": "Move to checking", "amount": "45.00", "transactionDate": "2026-05-04", "accountType": "SAVINGS", "linkedAccountType": "CHECKING", "category": null, "transactionType": "TRANSFER"}
+{"description": "Opening balance - checking", "amount": "1000.00", "transactionDate": "2026-05-01", "accountType": "CHECKING", "linkedAccountType": null, "category": null, "transactionType": "ADJUSTMENT"}
+{"description": "Opening balance - savings", "amount": "5000.00", "transactionDate": "2026-05-01", "accountType": "SAVINGS", "linkedAccountType": null, "category": null, "transactionType": "ADJUSTMENT"}
+{"description": "Balance correction", "amount": "12.34", "transactionDate": "2026-06-15", "accountType": "CHECKING", "linkedAccountType": null, "category": null, "transactionType": "ADJUSTMENT"}

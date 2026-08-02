@@ -85,4 +85,14 @@ export interface TransactionFilters {
   to?: string;
   accountType?: AccountType;
   category?: Category;
+  sortBy?: "DATE" | "AMOUNT";
+  sortDir?: "ASC" | "DESC";
+}
+
+export interface PageResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
 }

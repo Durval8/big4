@@ -175,7 +175,12 @@ class FinanceDashApplicationIT extends AbstractPostgresContainerTest {
                         .param("from", "2020-01-01")
                         .param("to", "2022-01-01"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].description").value("newer"))
-                .andExpect(jsonPath("$[1].description").value("older"));
+                // The endpoint returns a PageResponse envelope, not a bare array, since pagination
+                // was added -- rows live under $.content.
+                .andExpect(jsonPath("$.content[0].description").value("newer"))
+                .andExpect(jsonPath("$.content[1].description").value("older"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(1));
     }
 }

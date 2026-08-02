@@ -5,21 +5,32 @@ import com.financedash.domain.Category;
 import com.financedash.domain.Transaction;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
-    List<Transaction> findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(
-            LocalDate from, LocalDate to);
+    Page<Transaction> findByTransactionDateBetween(LocalDate from, LocalDate to, Pageable pageable);
 
-    List<Transaction> findByTransactionDateBetweenAndAccountTypeOrderByTransactionDateDescIdDesc(
-            LocalDate from, LocalDate to, AccountType accountType);
+    Page<Transaction> findByTransactionDateBetweenAndAccountType(
+            LocalDate from, LocalDate to, AccountType accountType, Pageable pageable);
 
-    List<Transaction> findByTransactionDateBetweenAndCategoryOrderByTransactionDateDescIdDesc(
-            LocalDate from, LocalDate to, Category category);
+    Page<Transaction> findByTransactionDateBetweenAndCategory(
+            LocalDate from, LocalDate to, Category category, Pageable pageable);
 
-    List<Transaction> findByTransactionDateBetweenAndAccountTypeAndCategoryOrderByTransactionDateDescIdDesc(
-            LocalDate from, LocalDate to, AccountType accountType, Category category);
+    Page<Transaction> findByTransactionDateBetweenAndAccountTypeAndCategory(
+            LocalDate from, LocalDate to, AccountType accountType, Category category, Pageable pageable);
 
     List<Transaction> findByTransactionDateLessThanEqual(LocalDate to);
+
+    /**
+     * Unpaginated date-range lookup retained for the aggregate consumers
+     * ({@link com.financedash.service.BalanceService},
+     * {@link com.financedash.service.BudgetService}), which sum over the whole range
+     * rather than serving a page. The paginated variants above back
+     * GET /api/transactions only.
+     */
+    List<Transaction> findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(
+            LocalDate from, LocalDate to);
 }

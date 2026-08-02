@@ -17,10 +17,15 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 /**
  * Verifies the Spring Data derived queries against a real Postgres: date-range
- * inclusivity, ordering, and the optional account/category filters.
+ * inclusivity, the optional account/category filters, and pagination/sort behavior
+ * driven entirely by the passed-in Pageable.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -33,10 +38,22 @@ class TransactionRepositoryIT extends AbstractPostgresContainerTest {
     @Autowired
     private TestEntityManager entityManager;
 
+    private static final LocalDate FROM = LocalDate.of(2026, 1, 1);
+    private static final LocalDate TO = LocalDate.of(2026, 12, 31);
+
     private Transaction persist(LocalDate date, AccountType account, Category category, TransactionType type) {
-        Transaction t = new Transaction(
-                "t", new BigDecimal("10.00"), date, account, null, category, type);
+        return persist(date, account, category, type, new BigDecimal("10.00"));
+    }
+
+    private Transaction persist(
+            LocalDate date, AccountType account, Category category, TransactionType type, BigDecimal amount) {
+        Transaction t = new Transaction("t", amount, date, account, null, category, type);
         return entityManager.persistAndFlush(t);
+    }
+
+    private static Pageable dateDescPageable(int page, int size) {
+        return PageRequest.of(page, size,
+                Sort.by(Sort.Direction.DESC, "transactionDate").and(Sort.by(Sort.Direction.DESC, "id")));
     }
 
     @Test
@@ -48,28 +65,61 @@ class TransactionRepositoryIT extends AbstractPostgresContainerTest {
         persist(from.minusDays(1), AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE); // just before
         persist(to.plusDays(1), AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);    // just after
 
-        List<Transaction> result =
-                repository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(from, to);
+        Page<Transaction> result = repository.findByTransactionDateBetween(from, to, dateDescPageable(0, 20));
 
-        assertThat(result).hasSize(2);
-        assertThat(result).allSatisfy(t ->
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getContent()).allSatisfy(t ->
                 assertThat(t.getTransactionDate()).isBetween(from, to));
     }
 
     @Test
-    void ordersByDateThenIdDescending() {
+    void ordersByDateThenIdDescendingByDefault() {
         LocalDate older = LocalDate.of(2026, 6, 1);
         LocalDate newer = LocalDate.of(2026, 6, 15);
         Transaction first = persist(newer, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);
         Transaction second = persist(newer, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);
         Transaction third = persist(older, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);
 
-        List<Transaction> result = repository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(
-                LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+        Page<Transaction> result = repository.findByTransactionDateBetween(FROM, TO, dateDescPageable(0, 20));
 
         // Newest date first; within the same date, the higher id (later insert) comes first.
-        assertThat(result).extracting(Transaction::getId)
+        assertThat(result.getContent()).extracting(Transaction::getId)
                 .containsExactly(second.getId(), first.getId(), third.getId());
+    }
+
+    @Test
+    void ordersByAmountAscendingWhenRequested() {
+        Transaction cheap = persist(FROM, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE,
+                new BigDecimal("5.00"));
+        Transaction mid = persist(FROM, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE,
+                new BigDecimal("50.00"));
+        Transaction expensive = persist(FROM, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE,
+                new BigDecimal("500.00"));
+
+        Pageable amountAsc = PageRequest.of(0, 20,
+                Sort.by(Sort.Direction.ASC, "amount").and(Sort.by(Sort.Direction.DESC, "id")));
+        Page<Transaction> result = repository.findByTransactionDateBetween(FROM, TO, amountAsc);
+
+        assertThat(result.getContent()).extracting(Transaction::getId)
+                .containsExactly(cheap.getId(), mid.getId(), expensive.getId());
+    }
+
+    @Test
+    void pagesResultsAndReportsTotals() {
+        for (int i = 0; i < 5; i++) {
+            persist(FROM.plusDays(i), AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);
+        }
+
+        Page<Transaction> firstPage = repository.findByTransactionDateBetween(FROM, TO, dateDescPageable(0, 2));
+        Page<Transaction> secondPage = repository.findByTransactionDateBetween(FROM, TO, dateDescPageable(1, 2));
+
+        assertThat(firstPage.getContent()).hasSize(2);
+        assertThat(firstPage.getTotalElements()).isEqualTo(5);
+        assertThat(firstPage.getTotalPages()).isEqualTo(3);
+        assertThat(secondPage.getContent()).hasSize(2);
+        // Pages don't overlap.
+        assertThat(firstPage.getContent()).extracting(Transaction::getId)
+                .doesNotContainAnyElementsOf(secondPage.getContent().stream().map(Transaction::getId).toList());
     }
 
     @Test
@@ -78,12 +128,24 @@ class TransactionRepositoryIT extends AbstractPostgresContainerTest {
         persist(d, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);
         persist(d, AccountType.SAVINGS, Category.GROCERIES, TransactionType.EXPENSE);
 
-        List<Transaction> result =
-                repository.findByTransactionDateBetweenAndAccountTypeOrderByTransactionDateDescIdDesc(
-                        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), AccountType.SAVINGS);
+        Page<Transaction> result = repository.findByTransactionDateBetweenAndAccountType(
+                FROM, TO, AccountType.SAVINGS, dateDescPageable(0, 20));
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getAccountType()).isEqualTo(AccountType.SAVINGS);
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getAccountType()).isEqualTo(AccountType.SAVINGS);
+    }
+
+    @Test
+    void filtersByCategory() {
+        LocalDate d = LocalDate.of(2026, 6, 10);
+        persist(d, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);
+        persist(d, AccountType.CHECKING, Category.DINING_OUT, TransactionType.EXPENSE);
+
+        Page<Transaction> result = repository.findByTransactionDateBetweenAndCategory(
+                FROM, TO, Category.DINING_OUT, dateDescPageable(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getCategory()).isEqualTo(Category.DINING_OUT);
     }
 
     @Test
@@ -93,14 +155,12 @@ class TransactionRepositoryIT extends AbstractPostgresContainerTest {
         persist(d, AccountType.CHECKING, Category.DINING_OUT, TransactionType.EXPENSE);
         persist(d, AccountType.SAVINGS, Category.GROCERIES, TransactionType.EXPENSE);
 
-        List<Transaction> result =
-                repository.findByTransactionDateBetweenAndAccountTypeAndCategoryOrderByTransactionDateDescIdDesc(
-                        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31),
-                        AccountType.CHECKING, Category.GROCERIES);
+        Page<Transaction> result = repository.findByTransactionDateBetweenAndAccountTypeAndCategory(
+                FROM, TO, AccountType.CHECKING, Category.GROCERIES, dateDescPageable(0, 20));
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getAccountType()).isEqualTo(AccountType.CHECKING);
-        assertThat(result.get(0).getCategory()).isEqualTo(Category.GROCERIES);
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getAccountType()).isEqualTo(AccountType.CHECKING);
+        assertThat(result.getContent().get(0).getCategory()).isEqualTo(Category.GROCERIES);
     }
 
     @Test
@@ -115,6 +175,25 @@ class TransactionRepositoryIT extends AbstractPostgresContainerTest {
         assertThat(result).hasSize(2);
         assertThat(result).allSatisfy(t ->
                 assertThat(t.getTransactionDate()).isBeforeOrEqualTo(cutoff));
+    }
+
+    /**
+     * The unpaginated range query is still the one BalanceService/BudgetService use to
+     * aggregate over a whole period, so it has to keep working alongside the paginated variants.
+     */
+    @Test
+    void unpaginatedRangeQueryStillServesAggregateConsumers() {
+        LocalDate older = LocalDate.of(2026, 6, 1);
+        LocalDate newer = LocalDate.of(2026, 6, 15);
+        persist(older, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);
+        persist(newer, AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);
+        persist(TO.plusDays(1), AccountType.CHECKING, Category.GROCERIES, TransactionType.EXPENSE);
+
+        List<Transaction> result =
+                repository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(FROM, TO);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(Transaction::getTransactionDate).containsExactly(newer, older);
     }
 
     @Test

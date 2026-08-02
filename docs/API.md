@@ -20,8 +20,23 @@ Query params (all optional):
 | `to`          | ISO date             | today                        |
 | `accountType` | `CHECKING\|SAVINGS\|INVESTING` | (none — all accounts) |
 | `category`    | one of `Category`    | (none — all categories)     |
+| `page`        | int, zero-indexed    | `0`                          |
+| `size`        | int, max `100`       | `20`                         |
+| `sortBy`      | `DATE\|AMOUNT`       | `DATE`                       |
+| `sortDir`     | `ASC\|DESC`          | `DESC`                       |
 
-Returns transactions in the range, newest first, as `TransactionResponse[]`.
+Returns a page of matching transactions as:
+```json
+{
+  "content": [ /* TransactionResponse[] */ ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 143,
+  "totalPages": 8
+}
+```
+Every sort appends `id DESC` as a secondary key, so page boundaries stay stable when multiple rows
+share a date or amount. `size > 100` returns 400.
 
 ### `GET /api/transactions/{id}`
 Returns a single `TransactionResponse`, or 404.
