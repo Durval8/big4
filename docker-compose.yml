@@ -57,6 +57,8 @@ services:
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      # Must include the public origin when served behind a real domain, or every write 403s.
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:*}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     depends_on:

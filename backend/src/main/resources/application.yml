@@ -22,3 +22,11 @@ spring:
 
 server:
   port: 8080
+
+app:
+  cors:
+    # Comma-separated origin patterns allowed to call /api/**. The default covers every local
+    # setup (Docker gateway, test stack, Vite dev server); a deployment on a real domain MUST add
+    # its public origin here or every POST/PUT/DELETE fails with 403 "Invalid CORS request" while
+    # GETs keep working. See WebConfig for why. Not a wildcard on purpose — the API has no auth.
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*}
