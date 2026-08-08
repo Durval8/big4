@@ -530,3 +530,190 @@ that keyword set, already reflected above:
    Guardian output — expect false positives/negatives until iterated on actual articles.
 6. **Sentiment and named-entity tagging** are noted as plausible next steps, deliberately not
    speced here (see Browsing tags → "Other ideas considered").
+
+## V1 implementation slice — the simplest version that's still correct
+
+Everything above is the target design. This section is the **first buildable increment** — enough
+to prove the real pipeline end-to-end (real Guardian calls, real MALLET topics, real Elasticsearch,
+a real page) while deliberately deferring every enhancement that isn't load-bearing for that proof.
+Each simplification below is explicit and reversible — nothing here contradicts the design above,
+it just sequences what's built first.
+
+### What v1 cuts, and why each cut is safe
+
+| Full design | v1 simplification | Why it's safe to defer |
+|---|---|---|
+| Company-name resolution (Finnhub lookup + `Holding.companyName` + backfill) | Query Guardian with **raw stock symbols** | Weaker relevance, zero schema/migration risk; upgrading to company names later is an isolated change to one query-building method |
+| Held-set-change trigger (buy/cash-out → immediate republish) | **Periodic publish only**, on `NEWS_PIPELINE_CRON` | Same self-healing property the design already leans on elsewhere — worst case, a new holding's news is up to one cron tick late |
+| Two ES indices (`news_articles` + `news_pipeline_state`) | **One ES index**; "current themes" held in an **in-memory bean** | A restart loses the current theme labels until the next scheduled run repopulates them — acceptable for a single-instance personal deployment; nothing is lost from `news_articles` itself |
+| Upsert-merge script (union themes across runs) | **Plain overwrite-index** per run | An article's `themes` reflects only its most recent run instead of accumulating across runs — a real regression from the target design, but not a correctness bug, and it's a one-method change to fix later |
+| `contentTags`, `sectionName`, retention job | **Omitted entirely** | None of these affect whether the pipeline or page works — pure additive scope |
+| Theme-keyword drill-down UI | **Chips only**, no sub-keyword expansion | The keyword sets already exist in the theme extraction output either way; the UI for them is a later increment |
+
+### news-service module (new)
+
+```
+news-service/                                  # new Maven module, registered in root pom.xml
+  src/main/java/com/financedash/news/
+    domain/       GuardianArticle (record: guardianId, headline, trailText, bodyText, url,
+                    publishedAt) — the transient pass-1/pass-2 shape, not an ES entity
+    document/     NewsArticleDocument (@Document(indexName="news_articles"))
+    repository/   NewsArticleRepository (Spring Data Elasticsearch — consistent with this repo's
+                    existing Spring Data JPA/Mongo pattern, not a hand-rolled REST client)
+    dto/          ArticleResponse, ThemeResponse, ErrorResponse — records, per repo convention
+    provider/     GuardianProvider (+ GuardianSearchException) — RestClient adapter, mirrors
+                    FinnhubProvider's shape (rate-limit awareness deferred — Guardian's free tier
+                    limit isn't quota-shared with anything else, unlike Finnhub)
+    service/      ThemeExtractor (wraps MALLET — input: List<GuardianArticle>, output:
+                    List<Theme(label, keywords)>), NewsPipelineService (orchestrates pass 1 →
+                    ThemeExtractor → pass 2 → index), CurrentThemesHolder (in-memory, v1 only)
+    messaging/    PortfolioSymbolsConsumer (consumer-side mirror record + @RabbitListener,
+                    triggers NewsPipelineService synchronously — no internal queue in v1)
+    controller/   NewsController (GET /api/news, GET /api/news/themes)
+    config/       ElasticsearchConfig, RabbitConfig, WebConfig (CORS — copy investments-service's
+                    WebConfig verbatim; same unauthenticated-API reasoning applies)
+    exception/    GlobalExceptionHandler
+  pom.xml         spring-boot-starter-web, spring-boot-starter-data-elasticsearch,
+                    spring-boot-starter-amqp, mallet
+```
+
+Port **8082** (backend=8080, investments-service=8081, news-service=8082 — next in sequence).
+
+### investments-service change (v1 scope: publish only)
+
+One new `@Scheduled` producer, same shape as `PriceRefreshScheduler` but simpler (no
+due/not-due filtering — every tick publishes the full current OPEN set):
+
+```java
+@Scheduled(cron = "${news.pipeline-cron:0 0 */4 * * *}")
+public void publishPortfolioSymbols() {
+    List<String> symbols = holdingRepository.findByStatus(HoldingStatus.OPEN)
+        .stream().map(Holding::getStockSymbol).distinct().toList();
+    rabbitTemplate.convertAndSend(InvestmentsMessaging.INVESTMENTS_EXCHANGE,
+        "investment.portfolio", new PortfolioSnapshot(symbols, clock.instant()));
+}
+```
+
+No `companyName` field, no buy()/cashOut() hook changes — this is the entire investments-service
+diff for v1.
+
+### Elasticsearch v1 index
+
+```java
+@Document(indexName = "news_articles")
+@Setting(shards = 1, replicas = 0)
+public class NewsArticleDocument {
+    @Id
+    private String id;                                    // = Guardian's own article id
+
+    @Field(type = FieldType.Text, analyzer = "english")
+    private String headline;
+
+    @Field(type = FieldType.Text, analyzer = "english")
+    private String trailText;
+
+    @Field(type = FieldType.Keyword)
+    private String url;
+
+    @Field(type = FieldType.Keyword)
+    private String source;                                // "The Guardian", hardcoded for now
+
+    @Field(type = FieldType.Keyword)
+    private List<String> themes;                           // this run's themes only (v1: overwritten, not merged)
+
+    @Field(type = FieldType.Date)
+    private Instant publishedAt;
+}
+```
+
+`docker-compose.yml` gains one service:
+
+```yaml
+elasticsearch:
+  image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+  environment:
+    discovery.type: single-node
+    xpack.security.enabled: "false"   # matches this app's no-auth stance on Postgres/Mongo too
+    ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+  ports:
+    - "${ELASTICSEARCH_PORT:-9200}:9200"
+  volumes:
+    - es_data:/usr/share/elasticsearch/data
+```
+
+### REST API v1
+
+```
+GET /api/news/themes
+→ { "themes": [ { "label": "chip / export / china", "keywords": ["chip","export","china",…] } ],
+    "runAt": "2026-08-08T12:00:00Z" }
+    (served from CurrentThemesHolder; empty themes[] + runAt=null before the first run completes)
+
+GET /api/news?theme=<label>&page=0&size=20
+→ { "items": [ { "headline", "trailText", "url", "source", "themes", "publishedAt" } ],
+    "page": 0, "size": 20, "hasMore": true }
+    (theme param optional; omitted = unfiltered, publishedAt desc)
+```
+
+Both gateway-routed directly (`/api/news/**` → news-service:8082), same pattern as
+`/api/investments/**` → investments-service today. No backend or investments-service involvement
+in serving either endpoint.
+
+### Frontend v1
+
+```
+frontend/src/
+  types/newsFeed.ts        Theme, Article, NewsFeedResponse (kept separate from the existing
+                              types/news.ts, which is the unrelated Investments-page card's types)
+  api/newsFeed.ts           newsFeedApi.themes(), newsFeedApi.list(theme?, page?)
+  hooks/useNewsFeed.ts      fetches themes once on mount; fetches articles on mount and whenever
+                              the selected theme changes; exposes { themes, articles, selectedTheme,
+                              setSelectedTheme, loading, error }
+  components/newsfeed/
+    ThemeChipBar.tsx        renders theme chips + an "All" chip; highlights the selected one
+    ArticleCard.tsx         headline (links to url, new tab), trailText, source + relative time
+    ArticleList.tsx         maps ArticleCard, renders EmptyState when items is empty
+  pages/NewsFeedPage.tsx    composes ThemeChipBar + ArticleList
+```
+
+- New route `/news` in the router; new nav entry in `AppShell.tsx` alongside the existing GitHub
+  docs link.
+- Empty states: no themes yet (pipeline hasn't run) vs. a selected theme with zero articles — two
+  distinct messages, same honest-empty-state philosophy as the rest of the app.
+- Styling: plain CSS against `tokens.css`, same as every other page — no new dependency.
+
+### "Corresponding frontend test" — what that means in this repo
+
+**This codebase has no frontend test runner** — `frontend/package.json` has exactly three runtime
+dependencies (react, react-dom, react-router-dom) and no test framework; `npm run build` (`tsc -b`
++ `vite build`) is the only automated gate (see `CLAUDE.md`). Every prior frontend feature in this
+project (analytics charts, the investment cash-leg UI changes) was verified by **manual browser
+walkthrough**, not an automated suite. This section follows that same convention rather than
+silently introducing new tooling.
+
+**Manual verification script for the News page:**
+
+1. Seed at least one OPEN holding (any symbol) so pass 1 has something to query.
+2. Add a **manual trigger endpoint for testing** — `POST /api/news/refresh` on news-service,
+   calling `NewsPipelineService` directly — so verification doesn't require waiting up to
+   `NEWS_PIPELINE_CRON`'s full interval. (Dev/test convenience only; not part of the public
+   contract above.)
+3. Trigger it, then `GET /api/news/themes` directly and confirm 7 (or fewer, if the corpus was
+   thin) themes with non-empty `keywords`.
+4. Load `/news` in the browser: confirm the same theme labels render as chips, matching step 3
+   exactly.
+5. Click a chip: confirm the article list changes and every visible article's `themes` (check via
+   network tab / `GET /api/news?theme=`) actually contains the selected label.
+6. Click "All": confirm the list returns to the unfiltered, `publishedAt`-descending view.
+7. Pick a theme with zero matches (or temporarily filter on a nonsense value via the API) and
+   confirm the empty state renders rather than a blank list.
+8. Click an article headline: confirm it opens the Guardian article in a new tab
+   (`target="_blank" rel="noreferrer noopener"`, matching the existing GitHub docs link pattern).
+9. Resize to <800px (this repo's one breakpoint) and confirm the chip bar and article cards reflow
+   without horizontal scroll.
+10. Toggle dark mode: confirm chips and cards pick up `tokens.css` dark values with no
+    hardcoded-light-color regressions.
+
+If real automated frontend tests are wanted instead of/alongside this script, that's a separate,
+explicit decision (introducing Vitest + Testing Library or similar) — not assumed here, since it's
+a tooling change affecting the whole frontend, not just this feature.
