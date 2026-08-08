@@ -114,8 +114,8 @@ class HoldingServiceIT extends AbstractContainersTest {
         assertThat(afterRise.currentValue()).isEqualByComparingTo("150.00");
         assertThat(afterRise.positionChangePct()).isEqualByComparingTo("50.00");
 
-        // Cash out €75 → 5 shares, realized gain €25, avg cost unchanged.
-        HoldingResponse afterCashOut = service.cashOut(id, new CashOutRequest(new BigDecimal("75.00")));
+        // Cash out 50% (5 of 10 shares) → realized gain €25, avg cost unchanged.
+        HoldingResponse afterCashOut = service.cashOut(id, new CashOutRequest(new BigDecimal("50")));
         assertThat(afterCashOut.quantity()).isEqualByComparingTo("5");
         assertThat(afterCashOut.netCashInvested()).isEqualByComparingTo("25.00");
         assertThat(afterCashOut.realizedGain()).isEqualByComparingTo("25.00");
@@ -129,7 +129,7 @@ class HoldingServiceIT extends AbstractContainersTest {
         quoteReturns("10.00");
         String id = service.buy(new BuyRequest("MSFT", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
 
-        HoldingResponse closed = service.cashOut(id, new CashOutRequest(new BigDecimal("100.00")));
+        HoldingResponse closed = service.cashOut(id, new CashOutRequest(new BigDecimal("100")));
         assertThat(closed.status()).isEqualTo(HoldingStatus.CASHED_OUT);
         assertThat(closed.quantity()).isEqualByComparingTo("0");
         assertThat(closed.currentValue()).isEqualByComparingTo("0.00");
@@ -144,7 +144,7 @@ class HoldingServiceIT extends AbstractContainersTest {
                 .id();
         service.buy(new BuyRequest("AAPL", new BigDecimal("50.00"), CashAccount.CHECKING, null));
 
-        service.cashOut(closedId, new CashOutRequest(new BigDecimal("100.00")));
+        service.cashOut(closedId, new CashOutRequest(new BigDecimal("100")));
 
         assertThat(service.list())
                 .extracting(HoldingResponse::stockSymbol)
@@ -199,6 +199,21 @@ class HoldingServiceIT extends AbstractContainersTest {
     }
 
     @Test
+    void percentageRoundingUpToTheFullQuantityStillClosesCleanly() {
+        // A percentage just under 100, with more precision than the division's rounding scale can
+        // hold, rounds up to exactly the held quantity. Without the clamp this would fall into the
+        // "partial" branch, subtract to a computed zero, and leave the holding OPEN with a zeroed
+        // quantity instead of properly CASHED_OUT.
+        quoteReturns("10.00");
+        String id = service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
+
+        HoldingResponse closed = service.cashOut(id, new CashOutRequest(new BigDecimal("99.999999999")));
+        assertThat(closed.status()).isEqualTo(HoldingStatus.CASHED_OUT);
+        assertThat(closed.quantity()).isEqualByComparingTo("0");
+        assertThat(closed.avgCost()).isNull();
+    }
+
+    @Test
     void transientProviderFailureBlocksTheBuy() {
         when(provider.quote(any())).thenThrow(new TransientProviderException("429"));
         assertThatThrownBy(() -> service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)))
@@ -216,11 +231,59 @@ class HoldingServiceIT extends AbstractContainersTest {
     }
 
     @Test
-    void cashOutExceedingPositionIsRejected() {
+    void cashOutOverOneHundredPercentIsRejected() {
         quoteReturns("10.00");
         String id = service.buy(new BuyRequest("GOOG", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
-        assertThatThrownBy(() -> service.cashOut(id, new CashOutRequest(new BigDecimal("200.00"))))
+        assertThatThrownBy(() -> service.cashOut(id, new CashOutRequest(new BigDecimal("101"))))
                 .isInstanceOf(InvalidInvestmentException.class);
+    }
+
+    @Test
+    void cashOutOfZeroOrNegativePercentIsRejected() {
+        quoteReturns("10.00");
+        String id = service.buy(new BuyRequest("GOOG", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
+        assertThatThrownBy(() -> service.cashOut(id, new CashOutRequest(BigDecimal.ZERO)))
+                .isInstanceOf(InvalidInvestmentException.class);
+    }
+
+    @Test
+    void fullCashOutIsImmuneToAPriceChangeBetweenRequestAndExecution() {
+        // Regression test for the bug this percentage-based design replaced: the old
+        // amount-vs-currentValue equality check raced against the price-refresh job, so a price
+        // update landing between a client reading currentValue and the cash-out request being
+        // handled could silently leave a nonzero "dust" quantity instead of fully closing.
+        // percentage=100 has no such race -- it reads straight from the live quantity.
+        quoteReturns("10.00");
+        String id = service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
+
+        // Simulate the periodic price-refresh job firing after the client last saw the position
+        // but before the cash-out request is handled.
+        Holding h = holdingRepository.findById(id).orElseThrow();
+        h.setLatestPrice(new BigDecimal("16.0000"));
+        holdingRepository.save(h);
+
+        HoldingResponse closed = service.cashOut(id, new CashOutRequest(new BigDecimal("100")));
+        assertThat(closed.status()).isEqualTo(HoldingStatus.CASHED_OUT);
+        assertThat(closed.quantity()).isEqualByComparingTo("0");
+        // Proceeds reflect the fresh price at execution time (10 shares x €16), not any value the
+        // client might have seen before the refresh.
+        assertThat(closed.netCashInvested()).isEqualByComparingTo("-60.00"); // 100 invested - 160 proceeds
+        assertThat(closed.realizedGain()).isEqualByComparingTo("60.00");    // 160 proceeds - 100 cost basis
+    }
+
+    @Test
+    void partialCashOutIsProportionalToLiveQuantityRegardlessOfPrice() {
+        quoteReturns("10.00");
+        String id = service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
+
+        Holding h = holdingRepository.findById(id).orElseThrow();
+        h.setLatestPrice(new BigDecimal("20.0000"));
+        holdingRepository.save(h);
+
+        // 25% of 10 shares is exactly 2.5 shares, regardless of what the price did in between.
+        HoldingResponse after = service.cashOut(id, new CashOutRequest(new BigDecimal("25")));
+        assertThat(after.quantity()).isEqualByComparingTo("7.5");
+        assertThat(after.status()).isEqualTo(HoldingStatus.OPEN);
     }
 
     @Test
@@ -258,7 +321,7 @@ class HoldingServiceIT extends AbstractContainersTest {
         quoteReturns("10.00");
         String id = service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
         org.mockito.Mockito.clearInvocations(newsRefreshPublisher);
-        service.cashOut(id, new CashOutRequest(new BigDecimal("100.00"))); // full close
+        service.cashOut(id, new CashOutRequest(new BigDecimal("100"))); // full close
         org.mockito.Mockito.verify(newsRefreshPublisher, org.mockito.Mockito.times(1)).requestRebuild();
     }
 
@@ -267,7 +330,7 @@ class HoldingServiceIT extends AbstractContainersTest {
         quoteReturns("10.00");
         String id = service.buy(new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
         org.mockito.Mockito.clearInvocations(newsRefreshPublisher);
-        service.cashOut(id, new CashOutRequest(new BigDecimal("40.00"))); // partial
+        service.cashOut(id, new CashOutRequest(new BigDecimal("40"))); // partial
         org.mockito.Mockito.verify(newsRefreshPublisher, org.mockito.Mockito.never()).requestRebuild();
     }
 }

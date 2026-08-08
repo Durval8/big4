@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { investmentsApi } from "../api/investments";
 import type {
+  CashOutInput,
   Investment,
   InvestmentCorrectionInput,
   InvestmentInput,
@@ -48,8 +49,8 @@ export function useInvestments() {
   );
 
   const cashOut = useCallback(
-    async (id: string, amount: number) => {
-      await investmentsApi.cashOut(id, amount);
+    async (id: string, input: CashOutInput) => {
+      await investmentsApi.cashOut(id, input);
       await reload();
     },
     [reload],

@@ -23,7 +23,7 @@ class InvestmentMessageContractTest {
     void cashLegCommandBindsEveryField() throws Exception {
         String json = """
                 {"schemaVersion":1,"type":"CASH_LEG","eventId":"evt-1","legType":"FUND",
-                 "account":"CHECKING","amount":100.00,"date":"2026-07-24"}
+                 "account":"CHECKING","amount":100.00,"date":"2026-07-24","stockSymbol":"AAPL"}
                 """;
 
         CashLegCommand cmd = mapper.readValue(json, CashLegCommand.class);
@@ -35,6 +35,23 @@ class InvestmentMessageContractTest {
         assertThat(cmd.account()).isEqualTo("CHECKING");
         assertThat(cmd.amount()).isEqualByComparingTo(new BigDecimal("100.00"));
         assertThat(cmd.date()).isEqualTo(LocalDate.of(2026, 7, 24));
+        assertThat(cmd.stockSymbol()).isEqualTo("AAPL");
+    }
+
+    @Test
+    void cashLegCommandStillBindsWithoutTheStockSymbol() throws Exception {
+        // stockSymbol was added after the first release without bumping schemaVersion, because it
+        // is purely descriptive. A message enqueued by an older service build must still bind, with
+        // the field left null — the consumer falls back to a generic ledger description.
+        String json = """
+                {"schemaVersion":1,"type":"CASH_LEG","eventId":"evt-1","legType":"FUND",
+                 "account":"CHECKING","amount":100.00,"date":"2026-07-24"}
+                """;
+
+        CashLegCommand cmd = mapper.readValue(json, CashLegCommand.class);
+
+        assertThat(cmd.eventId()).isEqualTo("evt-1");
+        assertThat(cmd.stockSymbol()).isNull();
     }
 
     @Test

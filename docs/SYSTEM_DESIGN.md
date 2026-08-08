@@ -155,9 +155,14 @@ sequenceDiagram
   INV-->>U: 201 (holding reflects immediately)
   INV->>MQ: relay publishes outbox rows
   MQ->>BE: cash-leg (FUND) + value snapshot
-  BE->>BE: investment_cash_flow += (idempotent)<br/>investment_valuation := (LWW)
+  BE->>BE: transactions += TRANSFER src→INVESTING (one txn)<br/>investment_cash_flow += (idempotent)<br/>investment_valuation := (LWW)
   Note over U,BE: Net worth is conserved: cash → holding.<br/>Dashboard catches up within seconds.
 ```
+
+The cash-leg consumer writes the ledger row and the projection row **in a single database
+transaction**. The ledger row is what debits the funding account (and appears in the user's
+transaction list); the projection row exists only to drive `netInvestment`. See
+[DATA_MODEL.md](DATA_MODEL.md#investing-cash-legs-in-the-ledger).
 
 ### Dashboard read (stale-but-coherent net worth)
 

@@ -42,6 +42,11 @@ export interface ManualPriceInput {
   price: number;
 }
 
+/** Percentage (0, 100] of the current position to sell; 100 always closes the holding. */
+export interface CashOutInput {
+  percentage: number;
+}
+
 export interface InvestmentSummary {
   totalNetInvested: number;
   totalCurrentValue: number;

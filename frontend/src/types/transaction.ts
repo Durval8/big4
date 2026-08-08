@@ -50,6 +50,11 @@ export interface Transaction {
   linkedAccountType: AccountType | null;
   category: Category | null;
   transactionType: TransactionType;
+  /**
+   * Non-null on rows the backend generated from an investment buy/cash-out. Such rows are
+   * read-only — the API returns 400 on edit or delete — so the UI hides their row actions.
+   */
+  sourceEventId: string | null;
   createdAt: string;
   updatedAt: string;
 }

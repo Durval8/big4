@@ -35,6 +35,16 @@ export function AppShell({ children }: AppShellProps) {
               Investments
             </NavLink>
           </div>
+          <a
+            className="app-nav__repo"
+            href="https://github.com/Durval8/big4"
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label="Source and documentation on GitHub"
+            title="Source and documentation on GitHub"
+          >
+            Docs
+          </a>
           <button
             type="button"
             className="theme-toggle"

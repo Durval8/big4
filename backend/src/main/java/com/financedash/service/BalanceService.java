@@ -21,11 +21,16 @@ import org.springframework.stereotype.Service;
  *
  * <p>Investing data now lives in the investments service and reaches the backend only as messages,
  * projected into two local tables: {@code investment_cash_flow} (buys/cash-outs) and a singleton
- * {@code investment_valuation} (the current holdings value). This service folds the cash flows into
- * the CHECKING/SAVINGS balances (no rows exist in {@code transactions} for investing) and reads the
- * INVESTING balance straight from the valuation snapshot — a shallow copy that is <b>always
- * current</b> regardless of the selected period (documented v1 simplification). Cash balances and
- * flows stay as-of the period.
+ * {@code investment_valuation} (the current holdings value). The INVESTING balance is read straight
+ * from the valuation snapshot — a shallow copy that is <b>always current</b> regardless of the
+ * selected period (documented v1 simplification). Cash balances stay as-of the period.
+ *
+ * <p><b>Cash movements for investing come from {@code transactions}, not from the cash-flow
+ * projection.</b> {@code InvestmentCashLegConsumer} writes a TRANSFER row for every cash leg (buy:
+ * funding account → INVESTING; cash-out: INVESTING → SAVINGS), so the ordinary transaction
+ * arithmetic below already accounts for them. Re-applying the projection here would double-count.
+ * The projection survives solely to drive {@code netInvestment}, which needs the FUND/CASH_OUT
+ * distinction directly.
  */
 @Service
 public class BalanceService {
@@ -46,12 +51,12 @@ public class BalanceService {
         List<Transaction> upToDate = transactionRepository.findByTransactionDateLessThanEqual(to);
         List<Transaction> inPeriod = transactionRepository
                 .findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(from, to);
-        List<InvestmentCashFlow> flowsUpToDate = cashFlowRepository.findByFlowDateLessThanEqual(to);
         List<InvestmentCashFlow> flowsInPeriod = cashFlowRepository.findByFlowDateBetween(from, to);
 
-        // Cash accounts: transactions minus funds sourced from them, plus cash-outs (which land in SAVINGS).
-        BigDecimal checking = cashBalance(upToDate, flowsUpToDate, AccountType.CHECKING);
-        BigDecimal savings = cashBalance(upToDate, flowsUpToDate, AccountType.SAVINGS);
+        // Cash accounts: transactions only. Investing legs are TRANSFER rows in the ledger, so the
+        // transfer arithmetic already debits/credits them — see the class Javadoc.
+        BigDecimal checking = cashBalance(upToDate, AccountType.CHECKING);
+        BigDecimal savings = cashBalance(upToDate, AccountType.SAVINGS);
         // INVESTING = shallow copy of the investments service's current net value (ZERO until first snapshot).
         BigDecimal investing = valuationRepository.findById(InvestmentValuation.SINGLETON_ID)
                 .map(InvestmentValuation::getNetValue)
@@ -59,9 +64,13 @@ public class BalanceService {
         BigDecimal netWorth = checking.add(savings).add(investing);
 
         BigDecimal expenses = sumWhere(inPeriod, t -> t.getTransactionType() == TransactionType.EXPENSE);
+        // Deliberately excludes system-generated rows: an investment cash-out is a TRANSFER into
+        // SAVINGS and would otherwise match this predicate, inflating "spending" with money the
+        // user took *out* of investments.
         BigDecimal transfersToSavings = sumWhere(inPeriod, t ->
                 t.getTransactionType() == TransactionType.TRANSFER
-                        && t.getLinkedAccountType() == AccountType.SAVINGS);
+                        && t.getLinkedAccountType() == AccountType.SAVINGS
+                        && !t.isSystemGenerated());
 
         BigDecimal spending = expenses.add(transfersToSavings);
         BigDecimal netSpending = expenses;
@@ -75,10 +84,13 @@ public class BalanceService {
     }
 
     /**
-     * Balance of a cash account = its transactions ± transfers, minus FUND flows sourced from it,
-     * plus CASH_OUT flows (which always credit SAVINGS).
+     * Balance of a cash account = its transactions ± transfers. Investing legs need no special
+     * handling: a buy is a TRANSFER out of this account (debited below) and a cash-out is a
+     * TRANSFER into SAVINGS (credited below). Only ever called for CHECKING and SAVINGS, so the
+     * INVESTING side of those transfers is never credited here — the INVESTING balance comes from
+     * the valuation snapshot instead.
      */
-    private BigDecimal cashBalance(List<Transaction> transactions, List<InvestmentCashFlow> flows, AccountType account) {
+    private BigDecimal cashBalance(List<Transaction> transactions, AccountType account) {
         BigDecimal balance = BigDecimal.ZERO;
         for (Transaction t : transactions) {
             switch (t.getTransactionType()) {
@@ -100,13 +112,6 @@ public class BalanceService {
                         balance = balance.add(t.getAmount());
                     }
                 }
-            }
-        }
-        for (InvestmentCashFlow f : flows) {
-            if (f.getType() == CashLegType.FUND && f.getAccountType() == account) {
-                balance = balance.subtract(f.getAmount());
-            } else if (f.getType() == CashLegType.CASH_OUT && account == AccountType.SAVINGS) {
-                balance = balance.add(f.getAmount());
             }
         }
         return balance;

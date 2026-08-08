@@ -96,4 +96,32 @@ class InvestmentControllerTest {
         mockMvc.perform(get("/api/investments/nope"))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void cashOutAcceptsAPercentage() throws Exception {
+        when(service.cashOut(eq("abc"), any())).thenReturn(sample());
+        mockMvc.perform(post("/api/investments/abc/cash-out")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"percentage\":100}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stockSymbol").value("AAPL"));
+    }
+
+    @Test
+    void cashOutOverOneHundredPercentReturns400() throws Exception {
+        mockMvc.perform(post("/api/investments/abc/cash-out")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"percentage\":101}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void cashOutOfZeroPercentReturns400() throws Exception {
+        mockMvc.perform(post("/api/investments/abc/cash-out")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"percentage\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
 }
