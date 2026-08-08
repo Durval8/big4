@@ -47,10 +47,13 @@ investing or show a flat line for it, either of which misleads.
   `Category` enum has no income/expense split and nothing in the codebase declares one.
 - **Hand-rolled SVG, no charting library.** The frontend has exactly three runtime dependencies
   (`react`, `react-dom`, `react-router-dom`), zero `<svg>` anywhere today, and an existing
-  hand-rolled bar primitive (`.progress-track` / `.progress-fill`). A donut, a bar series and a
-  line are each ~60 lines of path math. A library would also make theming *worse*, not better: the
-  light/dark tokens are defined across three CSS blocks (see below), so library defaults would need
-  overriding in all three.
+  hand-rolled bar primitive (`.progress-track` / `.progress-fill`). A line, a diverging bar, and a
+  single-level flow diagram are each well under 150 lines of path math (see [Chart
+  types](#chart-types) — the flow diagram is the most involved of the three, but a *single-level*
+  Sankey (one source, N targets, no intermediate stages) doesn't need a general layout algorithm,
+  just the same "sort by value, stack, draw a link" logic a stacked bar already needs). A library
+  would also make theming *worse*, not better: the light/dark tokens are defined across three CSS
+  blocks (see below), so library defaults would need overriding in all three.
 - **Charts follow the Dashboard's shared range selector.** One time concept on the page — the
   cards, the budgets and the charts always describe the same window (modulo the one-year cap, which
   only bites on `ALL`).
@@ -66,6 +69,23 @@ investing or show a flat line for it, either of which misleads.
   `previousAmount` alongside), and charts 2 and 3 share the per-bucket series (income-vs-expense
   just needs income alongside). Two arrays serve all four charts, so one request means one loading
   state and one error state for the whole section.
+
+## Chart types
+
+Each of the four charts gets a distinct, locked visualization type — resolving what was previously
+an open question for chart 1 and previously-implicit choices for charts 2–4.
+
+| # | Chart | Type | Why |
+|---|---|---|---|
+| 1 | Spending by category | **Flow diagram** (single-level Sankey: one "Total spending" source node, one link per category to a target node, link/node thickness ∝ amount) | Replaces the donut/horizontal-bar choice that was left open. A donut's angle encoding degrades with skewed, many-slice distributions (a €900 rent category next to six €20 ones is hard to compare by eye); a flow's thickness encoding reads the same way a bar does, but the source→category framing communicates "this is *where the money went*" more directly than a pie ever does, and it scales to the full top-N + "Other" set without the label-crowding a donut gets past ~6 slices. |
+| 2 | Spending over time | **Line chart**, single series | Standard trend encoding; one line per bucket's expense total, matching `--color-accent` per the existing palette table. |
+| 3 | Income vs. expense over time | **Diverging bar chart**, one bar-pair per bucket — income extends up from a shared zero axis, expense extends down (mirrored, magnitude only, not a negative number) | Two independent bars per bucket (grouped side-by-side) would work but reads as "compare two heights"; mirroring around zero reads as "money in vs. money out" at a glance and reuses the positive/negative tokens exactly as already assigned in the palette table below — no new token needed. |
+| 4 | Category movers | **Horizontal diverging bar chart**, one bar per category, extending right (increase) or left (decrease) from a zero centerline | Already implied by the existing color-inversion note below; stated explicitly here as its own chart type. Horizontal orientation keeps category labels readable at up to 17 rows, which a vertical bar wouldn't at that count. |
+
+All three non-flow charts share one **diverging-bar SVG helper**, parameterized by orientation
+(vertical for chart 3, horizontal for chart 4) and by which token pair drives which direction —
+avoiding two near-duplicate implementations of the same "bar extends from a baseline, color by
+sign" logic.
 
 ## Semantics — what counts, and what it reconciles against
 
@@ -305,9 +325,11 @@ names the current two and should be updated to include `AnalyticsService`.
   charts clear their thresholds, mirroring `BudgetSection`'s structure (loading / error-banner /
   empty-state handling). Slots into `DashboardPage` after `<BudgetSection range={range} />`, taking
   the same `range` prop.
-- `components/dashboard/charts/` — `CategoryDonut.tsx`, `SpendingTrendChart.tsx`,
+- `components/dashboard/charts/` — `CategoryFlowChart.tsx`, `SpendingTrendChart.tsx`,
   `IncomeExpenseChart.tsx`, `CategoryMoversChart.tsx`, `thresholds.ts`, plus small shared helpers
-  (axis ticks, currency-abbreviating label formatter, an `arcPath` for the donut). These are the
+  (axis ticks, currency-abbreviating label formatter, a `sankeyLinkPath` helper for the single-level
+  flow diagram, and a shared `DivergingBar` primitive parameterized by orientation — used by both
+  `IncomeExpenseChart` and `CategoryMoversChart`, see [Chart types](#chart-types)). These are the
   first `<svg>` in the codebase.
 - Charts must be **responsive without JS measurement**: `viewBox` + `preserveAspectRatio` and a
   CSS-sized container, not a `useRef`/`ResizeObserver` width. The sole existing breakpoint is
@@ -315,7 +337,7 @@ names the current two and should be updated to include `AnalyticsService`.
 - **Accessibility**: each chart gets a `<title>` and `role="img"` with an `aria-label` summarizing
   the data, plus a visually-hidden data table fallback for the two most information-dense charts.
   Hover tooltips are nice-to-have; the label must not be the only way to read a value. Category
-  labels are always rendered next to the donut — color is never the only channel carrying identity.
+  labels are always rendered next to their flow — color is never the only channel carrying identity.
 
 ### Palette — iOS system colors
 
@@ -325,7 +347,8 @@ hardcoded `rgba(94,92,230,.14)` tint, i.e. `#5E5CE6` (systemIndigo dark). This s
 explicit rather than ad hoc: **the series palette is Apple's iOS system colors, using their
 documented light and dark variants.**
 
-Only **one chart needs the categorical palette** — the donut. The other three map onto tokens that
+Only **one chart needs the categorical palette** — the flow diagram (one color per category
+link/node, same role a donut's slice fill would have played). The other three map onto tokens that
 already exist:
 
 | Chart | Colors |
@@ -353,7 +376,7 @@ distant hues:
 | `--chart-7` | systemYellow | `#FFCC00` | `#FFD60A` |
 | `--chart-8` | systemGray | `#8E8E93` | `#8E8E93` |
 
-`--chart-8` (gray) is reserved for the aggregated **"Other"** slice — the residual bucket reads
+`--chart-8` (gray) is reserved for the aggregated **"Other"** node — the residual bucket reads
 correctly as the muted one, and it means the top-7 real categories each get a distinct hue.
 systemRed is deliberately absent: it's already `--color-negative`, and a red category slice
 adjacent to a red "over budget" bar invites a false reading.
@@ -408,11 +431,9 @@ is the likely bug — it only shows up for a user who has never touched the them
   transactions span enough months and categories to exercise all four charts, **and whether it
   generates any `INCOME` rows at all**, since the income-vs-expense chart hides itself without them.
   Not a blocker for implementation, but do it before browser verification rather than after.
-- **Chart type for "spending by category"** — donut vs. horizontal bar was not settled. Horizontal
-  bars are easier to read with labels and handle 8 series better; a donut communicates "share of a
-  whole" more immediately. Decide during implementation with real data on screen. Note the
-  categorical palette is only load-bearing for the donut; horizontal bars could use a single hue
-  with varying length, which would make the whole palette optional.
+- ~~**Chart type for "spending by category"**~~ — resolved: a single-level flow diagram (Sankey).
+  See [Chart types](#chart-types). The categorical palette remains load-bearing (one color per
+  category link/node, same role it would have played on a donut).
 - **Threshold values are first guesses.** 3 categories / 5 buckets / 3 non-empty buckets / 1 income
   bucket are defensible but unvalidated. They're centralized in `thresholds.ts` specifically so they
   can be tuned after living with real data.
@@ -436,3 +457,9 @@ is the likely bug — it only shows up for a user who has never touched the them
   prior window partially predating the user's history inflates movers deltas, and required a
   comparison-window caption; noted `ALL` and `YEAR` are now equivalent for this section, and that
   the palette hex values are from recall and need verifying against Apple's current reference.
+- 2026-08-08 — user locked chart 1 as a flow diagram (single-level Sankey), resolving the
+  previously open donut-vs-bar question. Added an explicit [Chart types](#chart-types) table
+  locking the other three charts too (line, and a shared diverging-bar primitive used vertically
+  for income-vs-expense and horizontally for movers), since only chart 1 had been an open question
+  but 2–4 had never been stated as explicit types either. Renamed the planned `CategoryDonut.tsx`
+  component to `CategoryFlowChart.tsx` and swapped the `arcPath` helper for `sankeyLinkPath`.
