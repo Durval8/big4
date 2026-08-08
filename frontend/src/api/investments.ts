@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
 import type {
+  CashOutInput,
   Investment,
   InvestmentCorrectionInput,
   InvestmentInput,
@@ -13,8 +14,8 @@ export const investmentsApi = {
   create: (input: InvestmentInput) => apiClient.post<Investment>("/api/investments", input),
   update: (id: string, input: InvestmentCorrectionInput) =>
     apiClient.put<Investment>(`/api/investments/${id}`, input),
-  cashOut: (id: string, amount: number) =>
-    apiClient.post<Investment>(`/api/investments/${id}/cash-out`, { amount }),
+  cashOut: (id: string, input: CashOutInput) =>
+    apiClient.post<Investment>(`/api/investments/${id}/cash-out`, input),
   setPrice: (id: string, price: number) =>
     apiClient.post<Investment>(`/api/investments/${id}/price`, { price }),
   remove: (id: string) => apiClient.del(`/api/investments/${id}`),
