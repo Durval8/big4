@@ -27,15 +27,21 @@ the investment goes into a proper search/aggregation-backed corpus.
 
 1. **Guardian, not Finnhub, powers the new page.** Finnhub remains untouched on the Investments
    page. The two surfaces share no code path except reading the same held-symbol set.
-2. **Two-pass query, themes bridge the passes:**
-   - **Pass 1** — query Guardian per held symbol (by company name, see below) for recent articles.
-   - **Extract themes** from the pass-1 corpus via topic modeling (MALLET).
-   - **Pass 2** — query Guardian again, this time by the *extracted themes*, not the symbol.
+2. **Two-pass query, themes bridge the passes — pass 1 is aggregated across the whole portfolio,
+   not per symbol:**
+   - **Pass 1** — a single Guardian query combining *all* held company names (one call, not one
+     per symbol), pulling a substantial pooled corpus for the whole portfolio at once.
+   - **Extract themes** from that pooled corpus via topic modeling (MALLET) — **top 7 themes**.
+   - **Pass 2** — one Guardian query per extracted theme (7 queries), by the *theme*, not any symbol.
    - **Serve only pass-2 results.** Pass 1 is purely a theme-discovery step; nothing from it is
-     shown directly. This is what gives the feed its "similar stocks surge too" property: a theme
-     like "AI chip export controls" pulls in whoever else is currently in that story, without the
-     app ever maintaining a symbol→peers table.
-3. **Topic modeling = MALLET**, run in-process (it's a Java library — no sidecar, no new runtime).
+     shown directly. This is what gives the feed its "similar stocks surge too" property, and it's
+     now structural rather than incidental: because pass 1 pools the *entire* portfolio before
+     extracting themes, a theme like "AI chip export controls" isn't attributed back to any single
+     symbol — pass 2 searches it portfolio-wide, so whoever else is currently in that story surfaces
+     too, without the app ever maintaining a symbol→peers table.
+3. **Topic modeling = MALLET**, run in-process (it's a Java library — no sidecar, no new runtime),
+   over the pooled portfolio-wide corpus (resolves the per-symbol-vs-pooled question the first
+   draft of this spec left open).
 4. **New page, not a card.** Own route, own nav entry, backed by Elasticsearch instead of a
    singleton Mongo document — a real corpus with faceted search (by symbol, by theme), not just a
    fixed 7-item list.
@@ -173,33 +179,44 @@ weaker than searching "Apple." investments-service must resolve `companyName` be
   same shape as the `V4__backfill_investment_transactions.sql` precedent, but a Mongo backfill
   script rather than a Postgres migration since this field lives in `holdings`.
 
-### Pass 1 — theme discovery
+### Pass 1 — aggregated theme discovery
 
-For each symbol in the snapshot: query Guardian's content search (`/search` endpoint) with
-`q=<companyName>`, ordered by relevance/newest, over a lookback window (config, default 48h to
-match the existing internal news job), requesting body/trail text (`show-fields=trailText,bodyText`
-or similar) since MALLET needs actual text, not just headlines.
+**One Guardian query for the whole portfolio**, not one per symbol: combine every held company
+name into a single query (e.g. `q="Apple Inc" OR "NVIDIA Corp" OR "Microsoft Corp"`), ordered by
+relevance/newest, over a lookback window (config, default 48h to match the existing internal news
+job), requesting body/trail text (`show-fields=trailText,bodyText` or similar) since MALLET needs
+actual text, not just headlines.
+
+**Sizing "substantial."** Guardian's Content API supports up to `page-size=200` per call. Target a
+single page-size=200 request as the default corpus size — comfortably larger than any one symbol's
+share would be alone, and enough for MALLET's LDA to have a real chance at stable topics (see
+caveat below). If a portfolio is small enough that 48h doesn't fill 200 articles, the corpus is
+simply smaller — same honest-degradation stance the rest of this app takes (no padding with
+irrelevant filler to hit a number).
 
 ### Theme extraction (MALLET)
 
-Feed the pass-1 corpus (per symbol, or pooled across all held symbols — **open question**, see
-below) into MALLET's topic-modeling pipeline, extract the top N defining terms/themes.
+Feed the entire pooled corpus from pass 1 into MALLET's topic-modeling pipeline in one run, extract
+the **top 7 defining themes** (`MALLET_NUM_THEMES = 7`) across the whole portfolio at once — not
+per symbol. This is what makes the "similar stocks surge" behavior structural rather than
+incidental: a theme is never attributed back to the symbol that happened to surface it, so pass 2
+searching that theme naturally pulls in whatever else the story touches.
 
-**Caveat to flag honestly**: MALLET's LDA (`ParallelTopicModel`) is built for corpora much larger
-than "a few dozen short news articles for one stock over 48h." At this scale, topics may be noisy
-or degenerate (a handful of documents can't statistically support a stable topic distribution).
-Two mitigations to evaluate during implementation, not decided here:
-- Pool articles across **all held symbols** into one shared corpus before running LDA, then
-  attribute themes back to whichever symbols' articles contributed to each topic — more documents,
-  more stable topics, at the cost of a symbol's theme now being influenced by what else you hold.
-- Fall back to simpler TF-IDF top-term extraction (MALLET supports this via its pipe
-  infrastructure without the full LDA machinery) if per-symbol LDA proves too unstable in practice.
+**Caveat to flag honestly**: even pooled, MALLET's LDA (`ParallelTopicModel`) is built for corpora
+larger than "≤200 short news articles over 48h." Pooling the whole portfolio (rather than one
+symbol at a time, as the first draft of this spec proposed) is itself the primary mitigation — more
+documents, more stable topics. If 7 stable themes still don't reliably emerge at this scale during
+implementation, the fallback is simpler TF-IDF top-term extraction (MALLET supports this via its
+pipe infrastructure without the full LDA machinery) rather than forcing LDA to work on too little
+data.
 
-### Pass 2 — theme-driven query, served results
+### Pass 2 — theme-driven queries, served results
 
-Re-query Guardian using the extracted themes as the search terms (`q=<theme terms>`), same lookback
-window. **Only this pass's results get indexed into Elasticsearch and served** — pass 1 is discovery
-scaffolding, never shown.
+**One Guardian query per extracted theme (7 queries)**, using each theme's term(s) as `q=`, same
+lookback window. **Only these results get indexed into Elasticsearch and served** — pass 1 is
+discovery scaffolding, never shown. Unlike pass 1, pass-2 query volume is now **fixed at 7 per
+pipeline run regardless of portfolio size**, which is a meaningful efficiency property: a
+20-holding portfolio costs the same pass-2 budget as a 3-holding one.
 
 ### Elasticsearch index
 
@@ -207,8 +224,7 @@ One index (name TBD, e.g. `news_articles`), one document per served article:
 
 ```jsonc
 {
-  "seedSymbol":    "AAPL",                 // which held symbol's pipeline run produced this
-  "themes":        ["AI chip export controls", "smartphone supply chain"],
+  "themes":        ["AI chip export controls"],   // which of the 7 theme queries produced this
   "headline":      "…",
   "trailText":     "…",                    // Guardian's summary field
   "url":           "https://…",            // dedup key
@@ -219,6 +235,9 @@ One index (name TBD, e.g. `news_articles`), one document per served article:
 }
 ```
 
+No per-symbol attribution field (deliberately — see above: this feed is portfolio-wide by design,
+not indexed back to "which holding caused this").
+
 Elasticsearch earns its place here beyond "the user asked for it": native relevance scoring (BM25)
 for pass-2 ranking, faceted filtering by symbol or theme on the News page, and a durable growing
 corpus instead of the existing card's single overwritten singleton document — the News page can
@@ -228,11 +247,14 @@ support search/browse, not just a fixed list.
 
 - **New route/page** (e.g. `/news`), own nav entry — separate from the Investments page, which is
   untouched.
-- Held-symbol filter chips (derived from current holdings) plus theme facets, backed by
-  news-service's own `/api/news` endpoint (gateway-routed directly, no backend/investments-service
-  proxying — same shape as investments-service's existing direct frontend access).
-- Empty state per symbol/theme combination that returns nothing, same honest-empty-state philosophy
-  as the existing card.
+- **Theme facets** (up to 7, one per pipeline run) as the primary filter — there's no per-symbol
+  filter since the index carries no symbol attribution; the held-symbol set only ever influences
+  pass 1 upstream, not what's shown.
+- Backed by news-service's own `/api/news` endpoint (gateway-routed directly, no
+  backend/investments-service proxying — same shape as investments-service's existing direct
+  frontend access).
+- Empty state per theme that returns nothing, same honest-empty-state philosophy as the existing
+  card.
 
 ## Config (new, on whichever service ends up owning the pipeline per the resolved fork)
 
@@ -242,7 +264,8 @@ support search/browse, not just a fixed list.
 | `GUARDIAN_BASE_URL` | `https://content.guardianapis.com` | overridable for testing |
 | `NEWS_PIPELINE_CRON` | `0 0 */4 * * *` | periodic full resync, mirrors existing internal cadence |
 | `NEWS_LOOKBACK_HOURS` | `48` | pass-1 and pass-2 article window |
-| `MALLET_NUM_THEMES` | TBD | themes extracted per pipeline run |
+| `NEWS_CORPUS_SIZE` | `200` | pass-1 pooled corpus size (Guardian's max `page-size`) |
+| `MALLET_NUM_THEMES` | `7` | themes extracted per pipeline run, and pass-2 query count |
 
 ## Testing (sketch — firms up once the ownership fork is resolved)
 
@@ -265,12 +288,18 @@ support search/browse, not just a fixed list.
 
 ## Open questions
 
-1. **Per-symbol vs pooled-corpus theme extraction** — see the MALLET caveat above; needs empirical
-   tuning against however many symbols a real portfolio holds.
+1. **Does pooled LDA actually stabilize at ≤200 documents?** The aggregated-corpus approach is the
+   mitigation, not a guarantee — needs empirical validation once real Guardian responses are in
+   hand; TF-IDF fallback is the documented escape hatch if 7 themes come out noisy.
 2. **Elasticsearch ownership fork** — must be resolved before implementation (see above).
 3. **Guardian rate limits/tier** — unlike Finnhub's documented 60/min free tier already reused for
-   pricing, Guardian's free-tier quota and whether two calls per symbol per pipeline run fits
-   comfortably in it hasn't been checked yet.
+   pricing, Guardian's free-tier quota hasn't been checked yet. Call volume is now cheap and
+   portfolio-size-independent though: **1 pass-1 call + 7 pass-2 calls per pipeline run**, down
+   from the first draft's per-symbol scaling.
 4. **news-service's own persistence for pipeline state** (last-run timestamps, dead-letter/retry
    bookkeeping) — Elasticsearch alone may be sufficient (a small state document) or a dedicated
    store may be simpler; not decided.
+5. **Company-name query construction at portfolio scale** — a single Guardian query OR-ing every
+   held company name works cleanly for a handful of holdings; Guardian's query-length limits for a
+   much larger portfolio aren't known yet (not a concern for a single-user app today, noted for
+   completeness).
