@@ -1,8 +1,9 @@
 # Transaction analytics & Dashboard visualizations — design
 
-**Status: Backend implemented and tested 2026-08-08** (`AnalyticsService`/`AnalyticsController`/
-`BucketUnit` + unit/slice/integration tests, all green). **Frontend (the actual charts) not yet
-started.** Brainstormed and agreed 2026-08-02, refined 2026-08-08 (chart types locked, see [Chart
+**Status: Implemented end-to-end 2026-08-08** — backend (`AnalyticsService`/`AnalyticsController`/
+`BucketUnit` + unit/slice/integration tests, all green) and frontend (`AnalyticsSection` + all four
+charts, wired into `DashboardPage`). Browser-verified against the full Docker test stack with
+seeded data. Brainstormed and agreed 2026-08-02, refined 2026-08-08 (chart types locked, see [Chart
 types](#chart-types)).
 
 ## Why
@@ -479,3 +480,16 @@ is the likely bug — it only shows up for a user who has never touched the them
   gap. Docs updated: `docs/API.md` (new Analytics section), `docs/DATA_MODEL.md` (new Analytics
   aggregation section), `docs/ARCHITECTURE.md` (backend package listing + shared period resolution
   note).
+- 2026-08-08 — frontend implemented: `types/analytics.ts`, `api/analytics.ts`,
+  `hooks/useAnalytics.ts`, `AnalyticsSection` (slotted into `DashboardPage` after `BudgetSection`),
+  and all four charts per the locked [Chart types](#chart-types) table, plus `thresholds.ts`
+  (matching the [Render thresholds](#render-thresholds) table exactly) and `chartUtils.ts` (shared
+  SVG geometry: `sankeyLinkPath`, `divergingBarLength`, axis/currency-abbreviation helpers). The 8
+  iOS categorical tokens added to all three theme blocks in `tokens.css`. A `.visually-hidden`
+  data-table fallback was added to `SpendingTrendChart`/`IncomeExpenseChart` specifically — the two
+  charts with no other textual per-point representation, since the category charts already render
+  category names as real DOM text. `npm run build` clean; browser-verified against the full Docker
+  test stack with seeded data: all four charts render correct real numbers for `MONTH`, `WEEK`
+  correctly showed only the one chart (movers) that cleared its threshold rather than four empty
+  boxes, no console errors in either light or dark theme. `docs/ARCHITECTURE.md`'s frontend
+  structure listing updated to match.

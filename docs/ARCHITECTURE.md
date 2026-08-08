@@ -92,17 +92,24 @@ This service **owns the message contract**; the backend's `messaging/` records m
 
 `frontend/src/`
 ```
-types/        transaction.ts, budget.ts, investment.ts (share-based + PriceStatus), news.ts
+types/        transaction.ts, budget.ts, investment.ts (share-based + PriceStatus), news.ts,
+              analytics.ts
 api/          client.ts (fetch wrapper; relative base URL), transactions.ts, balances.ts,
-              budgets.ts, investments.ts, news.ts
+              budgets.ts, investments.ts, news.ts, analytics.ts
 hooks/        useTransactions, useBalances, useBudgets, useInvestments, useInvestmentNews
-                (feed + updatedAt polling), useTheme (light/dark, persisted)
+                (feed + updatedAt polling), useTheme (light/dark, persisted), useAnalytics
 lib/format.ts formatCurrency / formatPercent / formatShares / formatPrice / formatRelativeTime / …
 components/
   layout/     AppShell (nav + theme toggle), TimeRangeSelector
   dashboard/  BalanceCard, BalanceSummaryGrid (the 4 metrics),
               AccountBalancesCard (prominent grouped accounts panel), BudgetSection,
-              BudgetProgressCard, BudgetFormDrawer
+              BudgetProgressCard, BudgetFormDrawer, AnalyticsSection
+    charts/     CategoryFlowChart (single-level Sankey), SpendingTrendChart (line),
+                IncomeExpenseChart (diverging bar), CategoryMoversChart (horizontal diverging
+                bar), thresholds.ts (per-chart render thresholds), chartUtils.ts (shared SVG
+                geometry: sankeyLinkPath, divergingBarLength, axis/currency-abbreviation helpers)
+                — the first `<svg>` in this codebase; see
+                docs/superpowers/specs/2026-08-02-transaction-analytics-design.md
   transactions/ TransactionTable/Row/Filters, TransactionFormDrawer, DeleteConfirmDialog
   investments/  InvestmentTable/Row, InvestmentFormDrawer (buy / correction),
               CashOutDialog, ManualPriceDialog, NewsCard
