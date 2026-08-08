@@ -1,17 +1,17 @@
 import { formatCurrency, formatDate } from "../../../lib/format";
-import { formatAxisCurrency, formatBucketLabel, pickAxisLabelIndices } from "./chartUtils";
+import { formatAxisCurrency, formatBucketLabel, niceAxisTicks, pickAxisLabelIndices } from "./chartUtils";
 import type { TimeBucket } from "../../../types/analytics";
 
 interface SpendingTrendChartProps {
   buckets: TimeBucket[];
 }
 
-const WIDTH = 600;
-const HEIGHT = 240;
-const LEFT = 50;
+const WIDTH = 900;
+const HEIGHT = 280;
+const LEFT = 64;
 const RIGHT = WIDTH - 20;
-const TOP = 20;
-const BOTTOM = HEIGHT - 40;
+const TOP = 16;
+const BOTTOM = HEIGHT - 36;
 const PLOT_WIDTH = RIGHT - LEFT;
 const PLOT_HEIGHT = BOTTOM - TOP;
 
@@ -26,19 +26,22 @@ export function SpendingTrendChart({ buckets }: SpendingTrendChartProps) {
   if (n === 0) {
     return null;
   }
-  const maxVal = Math.max(...buckets.map((b) => b.expense), 1);
+  const rawMax = Math.max(...buckets.map((b) => b.expense), 1);
+  const ticks = niceAxisTicks(rawMax, 4);
+  const axisMax = ticks[ticks.length - 1];
 
   const xFor = (i: number) => LEFT + (n === 1 ? 0 : (i / (n - 1)) * PLOT_WIDTH);
-  const yFor = (value: number) => BOTTOM - (value / maxVal) * PLOT_HEIGHT;
+  const yFor = (value: number) => BOTTOM - (value / axisMax) * PLOT_HEIGHT;
 
   const linePath = buckets
     .map((b, i) => `${i === 0 ? "M" : "L"} ${xFor(i)},${yFor(b.expense)}`)
     .join(" ");
+  const areaPath = `${linePath} L ${xFor(n - 1)},${BOTTOM} L ${xFor(0)},${BOTTOM} Z`;
 
   const labelIndices = pickAxisLabelIndices(n);
   const ariaLabel = `Spending trend from ${formatDate(buckets[0].start)} to ${formatDate(
     buckets[n - 1].start,
-  )}, ranging from ${formatCurrency(0)} to ${formatCurrency(maxVal)}`;
+  )}, ranging from ${formatCurrency(0)} to ${formatCurrency(rawMax)}`;
 
   return (
     <div>
@@ -50,27 +53,39 @@ export function SpendingTrendChart({ buckets }: SpendingTrendChartProps) {
       >
         <title>Spending over time</title>
 
-        <line x1={LEFT} y1={BOTTOM} x2={RIGHT} y2={BOTTOM} stroke="var(--color-border)" />
-        <text x={0} y={TOP + 4} fill="var(--color-text-secondary)" fontSize={11}>
-          {formatAxisCurrency(maxVal)}
-        </text>
-        <text x={0} y={BOTTOM + 4} fill="var(--color-text-secondary)" fontSize={11}>
-          $0
-        </text>
+        {ticks.map((t) => {
+          const y = yFor(t);
+          return (
+            <g key={t}>
+              <line x1={LEFT} y1={y} x2={RIGHT} y2={y} stroke="var(--color-border)" strokeWidth={1} />
+              <text x={LEFT - 10} y={y + 4} fill="var(--color-text-secondary)" fontSize={11} textAnchor="end">
+                {formatAxisCurrency(t)}
+              </text>
+            </g>
+          );
+        })}
+        <line x1={LEFT} y1={BOTTOM} x2={LEFT} y2={TOP} stroke="var(--color-border)" strokeWidth={1} />
 
-        <path d={linePath} fill="none" stroke="var(--color-accent)" strokeWidth={2} />
+        <path d={areaPath} fill="var(--color-accent)" opacity={0.12} stroke="none" />
+        <path d={linePath} fill="none" stroke="var(--color-accent)" strokeWidth={2.5} />
+        {buckets.map((b, i) => (
+          <circle key={b.start} cx={xFor(i)} cy={yFor(b.expense)} r={3} fill="var(--color-accent)" />
+        ))}
 
+        <line x1={LEFT} y1={BOTTOM} x2={RIGHT} y2={BOTTOM} stroke="var(--color-text-secondary)" strokeWidth={1} />
         {labelIndices.map((i) => (
-          <text
-            key={i}
-            x={xFor(i)}
-            y={HEIGHT - 12}
-            fill="var(--color-text-secondary)"
-            fontSize={11}
-            textAnchor="middle"
-          >
-            {formatBucketLabel(buckets[i].start)}
-          </text>
+          <g key={i}>
+            <line x1={xFor(i)} y1={BOTTOM} x2={xFor(i)} y2={BOTTOM + 4} stroke="var(--color-text-secondary)" />
+            <text
+              x={xFor(i)}
+              y={HEIGHT - 12}
+              fill="var(--color-text-secondary)"
+              fontSize={11}
+              textAnchor="middle"
+            >
+              {formatBucketLabel(buckets[i].start)}
+            </text>
+          </g>
         ))}
       </svg>
 

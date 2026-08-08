@@ -45,7 +45,7 @@ export function topCategoriesWithOther(categories: CategoryTotal[]): CategorySli
   return slices;
 }
 
-/** Abbreviates a currency amount for axis ticks: "$1.2k", "$450", "$3.4M". */
+/** Abbreviates a currency amount for axis ticks: "$1.2k", "$450", "$3.4M", "$0.20" below $10. */
 export function formatAxisCurrency(amount: number): string {
   const abs = Math.abs(amount);
   const sign = amount < 0 ? "-" : "";
@@ -54,6 +54,9 @@ export function formatAxisCurrency(amount: number): string {
   }
   if (abs >= 1_000) {
     return `${sign}$${(abs / 1_000).toFixed(1)}k`;
+  }
+  if (abs < 10 && abs !== Math.round(abs)) {
+    return `${sign}$${abs.toFixed(2)}`;
   }
   return `${sign}$${Math.round(abs)}`;
 }
@@ -106,15 +109,46 @@ export function sankeyLinkPath(
 /**
  * Shared diverging-bar sizing: given a value and the max absolute value in the series, returns
  * the bar's length in SVG user units for a plot of `plotExtent` units. Used vertically (income
- * up / expense down from a shared zero axis) by IncomeExpenseChart and horizontally (increase
- * right / decrease left from a zero centerline) by CategoryMoversChart — the two charts differ in
- * axis orientation and in whether they plot two independent series or one signed delta, so this
- * helper covers the one thing they actually share: turning a magnitude into a bar length against
- * a common scale, never negative.
+ * up / expense down from a shared zero axis) by IncomeExpenseChart. Never negative.
  */
 export function divergingBarLength(value: number, maxAbsValue: number, plotExtent: number): number {
   if (maxAbsValue <= 0) {
     return 0;
   }
   return (Math.abs(value) / maxAbsValue) * plotExtent;
+}
+
+/**
+ * "Nice" axis ticks: searches increasing 1/2/5×10ⁿ step sizes for the smallest one that keeps the
+ * resulting tick count close to `targetTickCount`, then returns evenly-spaced values from 0 up to
+ * that step's ceiling of `maxValue`.
+ *
+ * Deriving the step from `maxValue / targetTickCount` and rounding *that* up to the nearest
+ * 1/2/5 (the first version of this helper) overshoots badly whenever the raw step lands just
+ * above a rounding boundary — e.g. maxValue=425, targetTickCount=4 gives a raw step of 106.25,
+ * which rounds up to 200, nearly doubling the axis ceiling to 800 for data that peaks at 425.
+ * Searching for the step directly against the actual tick *count* it produces avoids that: it
+ * keeps trying finer steps until one lands in range, so the ceiling stays tight to the data.
+ */
+export function niceAxisTicks(maxValue: number, targetTickCount = 4): number[] {
+  if (maxValue <= 0) {
+    return Array.from({ length: targetTickCount + 1 }, (_, i) => i);
+  }
+  const minCount = Math.max(targetTickCount - 1, 2);
+  const maxCount = targetTickCount + 2;
+  const startMagnitude = Math.pow(10, Math.floor(Math.log10(maxValue / maxCount)));
+
+  for (let magnitude = startMagnitude; magnitude <= maxValue * 2; magnitude *= 10) {
+    for (const mantissa of [1, 2, 5]) {
+      const step = mantissa * magnitude;
+      const count = Math.ceil(maxValue / step);
+      if (count >= minCount && count <= maxCount) {
+        return Array.from({ length: count + 1 }, (_, i) => i * step);
+      }
+    }
+  }
+  // Fallback — shouldn't normally be reached, but never leave the axis without ticks.
+  const step = Math.pow(10, Math.ceil(Math.log10(maxValue / targetTickCount)));
+  const count = Math.ceil(maxValue / step);
+  return Array.from({ length: count + 1 }, (_, i) => i * step);
 }

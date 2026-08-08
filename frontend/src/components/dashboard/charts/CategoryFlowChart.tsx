@@ -6,16 +6,16 @@ interface CategoryFlowChartProps {
   categories: CategoryTotal[];
 }
 
-const WIDTH = 600;
+const WIDTH = 900;
 const HEIGHT = 320;
 const TOP = 20;
 const BOTTOM = HEIGHT - 20;
 const PLOT_HEIGHT = BOTTOM - TOP;
-const SOURCE_X = 70;
-const NODE_WIDTH = 14;
-const TARGET_X = 420;
-const LABEL_X = TARGET_X + NODE_WIDTH + 10;
-const NODE_GAP = 6;
+const SOURCE_X = 90;
+const NODE_WIDTH = 16;
+const TARGET_X = 640;
+const LABEL_X = TARGET_X + NODE_WIDTH + 14;
+const NODE_GAP = 8;
 
 /**
  * "Spending by category" as a single-level flow diagram (Sankey): one "Total spending" source
@@ -94,18 +94,18 @@ export function CategoryFlowChart({ categories }: CategoryFlowChartProps) {
           />
           <text
             x={LABEL_X}
-            y={(t.yTop + t.yBottom) / 2 - 4}
+            y={(t.yTop + t.yBottom) / 2 - 5}
             fill="var(--color-text-primary)"
-            fontSize={13}
+            fontSize={15}
             fontWeight={600}
           >
             {t.label}
           </text>
           <text
             x={LABEL_X}
-            y={(t.yTop + t.yBottom) / 2 + 12}
+            y={(t.yTop + t.yBottom) / 2 + 13}
             fill="var(--color-text-secondary)"
-            fontSize={12}
+            fontSize={13}
           >
             {formatCurrency(t.amount)}
           </text>

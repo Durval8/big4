@@ -753,16 +753,12 @@ select {
 }
 
 /* Analytics (Dashboard "Insights" section) */
+/* Full-width, stacked — every chart here has enough data points (up to 8 categories or 31
+   time buckets) that a half-width card left them cramped and hard to read. */
 .analytics-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: var(--space-md);
-}
-
-@media (max-width: 800px) {
-  .analytics-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 .chart-card__title {
