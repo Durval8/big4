@@ -19,6 +19,8 @@ export interface BudgetProgress {
   id: number;
   name: string;
   value: number;
+  /** `value` prorated to the length of [from, to] — the figure to display against `spent`. */
+  periodValue: number;
   categories: Category[];
   spent: number;
   remaining: number;

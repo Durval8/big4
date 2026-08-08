@@ -8,6 +8,11 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
+/**
+ * {@code sourceEventId} is non-null only for ledger rows generated from an investments-service
+ * cash leg. Such rows are read-only — {@code PUT}/{@code DELETE} on them returns 400 — so the UI
+ * uses this field to hide its row actions.
+ */
 public record TransactionResponse(
         Long id,
         String description,
@@ -17,6 +22,7 @@ public record TransactionResponse(
         AccountType linkedAccountType,
         Category category,
         TransactionType transactionType,
+        String sourceEventId,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -30,6 +36,7 @@ public record TransactionResponse(
                 t.getLinkedAccountType(),
                 t.getCategory(),
                 t.getTransactionType(),
+                t.getSourceEventId(),
                 t.getCreatedAt(),
                 t.getUpdatedAt()
         );

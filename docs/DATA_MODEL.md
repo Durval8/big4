@@ -15,10 +15,15 @@ Both are populated by RabbitMQ consumers; the backend never queries the service.
 ## Entity: `Transaction`
 
 There is no `Account` table — "account" is a `type` field on the transaction
-itself (see [Scope](#scope-decisions)). **Transactions are `CHECKING`/`SAVINGS`
-only** — `INVESTING` is no longer a valid transaction account (rejected by
-`TransactionService`); investing is the `Investment` entity, and the `INVESTING`
+itself (see [Scope](#scope-decisions)). **User-created transactions are
+`CHECKING`/`SAVINGS` only** — `INVESTING` is rejected by `TransactionService` on
+every API path; investing is the `Investment` entity, and the `INVESTING`
 balance reflects holdings.
+
+The one exception is **system-generated rows** (`sourceEventId` non-null), which
+the cash-leg consumer writes directly through the repository, bypassing that
+validation. A buy is `TRANSFER accountType → INVESTING`, a cash-out is
+`TRANSFER INVESTING → SAVINGS`. See [Investing cash legs](#investing-cash-legs-in-the-ledger).
 
 | Field               | Type          | Notes                                                            |
 |---------------------|---------------|-------------------------------------------------------------------|
@@ -30,12 +35,39 @@ balance reflects holdings.
 | `linkedAccountType` | `AccountType` | required **iff** `transactionType = TRANSFER`, forbidden otherwise |
 | `category`          | `Category`    | required **iff** `transactionType` is `INCOME`/`EXPENSE`, forbidden otherwise |
 | `transactionType`   | `TransactionType` | required                                                     |
+| `sourceEventId`     | `String`      | null for user-created rows; the cash-leg `eventId` for system-generated ones |
 | `createdAt`/`updatedAt` | `Instant` | auto-managed (JPA auditing)                                     |
 
 These cross-field rules are enforced in `TransactionService.validate()`
 (`backend/src/main/java/com/financedash/service/TransactionService.java`), not
 by Bean Validation annotations, since they depend on `transactionType`. A
 violation returns **400** via `InvalidTransactionException`.
+
+### Investing cash legs in the ledger
+
+When the investments service reports a buy or cash-out, `InvestmentCashLegConsumer` writes **two**
+rows in one transaction: a `transactions` row (the user-visible ledger entry, and the source of
+truth for the cash movement) and an `investment_cash_flow` row (which only drives `netInvestment`).
+
+| Leg | Ledger row |
+|---|---|
+| `FUND` (buy) | `TRANSFER` funding account → `INVESTING`, description `Bought <SYMBOL>` |
+| `CASH_OUT` | `TRANSFER` `INVESTING` → `SAVINGS`, description `Cashed out <SYMBOL>` |
+
+Both carry the leg's `eventId` in `sourceEventId`, which is load-bearing three times over:
+
+- **The rows are read-only.** `PUT`/`DELETE` return **400** — the investments service still holds
+  the position, so editing the ledger row would desync cash from holdings with no way to reconcile.
+- **Cash-outs are excluded from `spending`.** A cash-out is a TRANSFER into SAVINGS, which is
+  exactly the `spending` predicate; without the marker, taking money *out* of investments would
+  count as spending it.
+- The frontend uses it to hide the row's edit/delete actions.
+
+Before this existed, the cash movement lived only in `investment_cash_flow` and `BalanceService`
+folded it into balances directly — correct totals, but invisible in the ledger. `V4__backfill_
+investment_transactions.sql` created ledger rows for every historical leg; it had to ship with the
+`BalanceService` change, since otherwise removing the fold-in would have made every past buy stop
+debiting anything.
 
 ## Enums
 
@@ -49,9 +81,7 @@ violation returns **400** via `InvalidTransactionException`.
 
 ## Balance formula
 
-Cash-account (`CHECKING`/`SAVINGS`) running balance as of date `T`, folding in
-investing cash flows from the `investment_cash_flow` projection (`FUND` debits its source account;
-`CASH_OUT` credits SAVINGS — fed by cash-leg messages from the investments service):
+Cash-account (`CHECKING`/`SAVINGS`) running balance as of date `T` — **transactions only**:
 
 ```
 balance(account, T) = Σ INCOME.amount        (accountType = account, date ≤ T)
@@ -59,15 +89,20 @@ balance(account, T) = Σ INCOME.amount        (accountType = account, date ≤ T
                      − Σ EXPENSE.amount       (accountType = account, date ≤ T)
                      − Σ TRANSFER.amount      (accountType = account, date ≤ T)        [outgoing]
                      + Σ TRANSFER.amount      (linkedAccountType = account, date ≤ T)  [incoming]
-                     − Σ FUND cash-flow.amount     (source account = account, flowDate ≤ T)
-                     + Σ CASH_OUT cash-flow.amount (account = SAVINGS, flowDate ≤ T)
 
 balance(INVESTING) = investment_valuation.netValue   (latest snapshot; ZERO before the first)
 ```
 
-Implemented in `BalanceService.cashBalance()`; the INVESTING balance is read from the
-`investment_valuation` singleton (a shallow copy kept current by value-snapshot messages — always
-"now," no valuation history). This is a *stale-but-coherent* number: both the cash flows and the
+Investing cash legs need no term of their own: they *are* TRANSFER rows (see
+[Investing cash legs](#investing-cash-legs-in-the-ledger)), so the outgoing/incoming lines above
+already cover them. A buy debits its funding account via the outgoing line; a cash-out credits
+SAVINGS via the incoming line. Re-applying `investment_cash_flow` here would double-count — that
+projection now serves `netInvestment` alone.
+
+The INVESTING side of those transfers is never credited by this formula, because `cashBalance()`
+is only ever called for `CHECKING` and `SAVINGS`. `balance(INVESTING)` comes from the
+`investment_valuation` singleton instead (a shallow copy kept current by value-snapshot messages —
+always "now," no valuation history). This is a *stale-but-coherent* number: the ledger rows and the
 value ride the same message stream, so net worth is never internally contradictory.
 
 ## Dashboard metrics
@@ -80,6 +115,7 @@ netWorth(T)           = balance(CHECKING, T) + balance(SAVINGS, T) + balance(INV
 
 spending(period)      = Σ EXPENSE.amount                                      (in period)
                        + Σ TRANSFER.amount where linkedAccountType = SAVINGS   (in period)
+                         and sourceEventId IS NULL   [excludes investment cash-outs]
 
 netSpending(period)   = Σ EXPENSE.amount                                      (in period)
 
@@ -107,7 +143,7 @@ A named spending target tracked against a set of categories.
 |---------------|-----------------|-----------------------------------------------------|
 | `id`          | `Long`          | generated                                          |
 | `name`        | `String`        | required, non-blank                                |
-| `value`       | `BigDecimal`    | required, `> 0` — the target/limit                 |
+| `value`       | `BigDecimal`    | required, `> 0` — the **monthly** target/limit     |
 | `categories`  | `Set<Category>` | required, non-empty — stored in a `budget_categories` join table (`@ElementCollection`, **EAGER**) |
 | `createdAt`/`updatedAt` | `Instant` | auto-managed (JPA auditing)                       |
 
@@ -116,7 +152,6 @@ A named spending target tracked against a set of categories.
 ```
 spent(budget, from, to) = Σ EXPENSE.amount   where category ∈ budget.categories
                                               and from ≤ transactionDate ≤ to
-remaining = value − spent      (negative when over budget)
 ```
 
 - **Expenses only.** Only `EXPENSE` transactions count. `INCOME` in a budget's
@@ -132,6 +167,33 @@ remaining = value − spent      (negative when over budget)
   income/expense partition of the enum in this MVP.
 - **Overlap allowed.** A category may appear in multiple budgets; each budget
   sums its own categories independently.
+
+**Period proration.** `value` is always a monthly figure, but the window the
+caller selects (`WEEK`/`MONTH`/`YEAR`/`ALL`, or an explicit `from`/`to`) can be
+any length, so `GET /api/budgets/progress` also returns a `periodValue` —
+`value` scaled to the window — and `remaining` is computed against
+`periodValue`, not `value`:
+
+```
+daysInPeriod          = days in [from, to], inclusive
+factor                = daysInPeriod / 30.44        (nominal average days/month)
+periodValue(budget)   = value × factor              (rounded HALF_UP, 2dp)
+remaining             = periodValue − spent          (negative when over budget)
+```
+
+- **`value` itself is never scaled.** `GET /api/budgets` / `GET /api/budgets/{id}`
+  (`BudgetResponse`) and the create/edit form only ever see the raw monthly
+  `value` — only `BudgetProgressResponse.periodValue` is prorated. This matters
+  because the edit form is prefilled from the progress list; if it read
+  `periodValue` instead, saving while e.g. "Last year" was selected would
+  silently overwrite the stored monthly target with a scaled number.
+- **`TimeRange.ALL` is special-cased.** Its window otherwise resolves `from` to
+  `1970-01-01` — a degenerate ~56-year span that would make `factor` enormous.
+  Instead, for `ALL` the scaling window starts at the date of the **earliest
+  transaction in the system** (not the budget's own `createdAt`), reflecting
+  how much financial history actually exists. If there are no transactions at
+  all yet, it falls back to a single-day window ending at `to`.
+- See `docs/API.md#get-apibudgetsprogress` for a worked example.
 
 Categories are fetched **EAGER** deliberately: services aren't `@Transactional`
 and `open-in-view` is off, so a lazy collection would fail to load once the

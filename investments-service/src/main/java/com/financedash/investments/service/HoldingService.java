@@ -134,7 +134,7 @@ public class HoldingService {
 
         outbox.enqueueCashLeg(CashLegCommand.of(
                 eventId, InvestmentEventType.FUND.name(), request.sourceAccount().name(),
-                Precision.money(request.amount()), date));
+                Precision.money(request.amount()), date, h.getStockSymbol()));
         emitSnapshot();
         if (newSymbol) {
             // The held-symbol set grew → refresh the news feed so the new holding is represented.
@@ -201,7 +201,8 @@ public class HoldingService {
         holdingRepository.save(h);
 
         outbox.enqueueCashLeg(CashLegCommand.of(
-                eventId, InvestmentEventType.CASH_OUT.name(), CashAccount.SAVINGS.name(), amount, date));
+                eventId, InvestmentEventType.CASH_OUT.name(), CashAccount.SAVINGS.name(), amount, date,
+                h.getStockSymbol()));
         emitSnapshot();
         if (full) {
             // The held-symbol set shrank → refresh so the closed holding's news drops out.

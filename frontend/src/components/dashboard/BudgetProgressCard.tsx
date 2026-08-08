@@ -8,8 +8,8 @@ interface BudgetProgressCardProps {
 }
 
 export function BudgetProgressCard({ budget, onEdit, onDelete }: BudgetProgressCardProps) {
-  const over = budget.spent > budget.value;
-  const pct = budget.value > 0 ? Math.min(100, (budget.spent / budget.value) * 100) : 0;
+  const over = budget.spent > budget.periodValue;
+  const pct = budget.periodValue > 0 ? Math.min(100, (budget.spent / budget.periodValue) * 100) : 0;
 
   return (
     <div className="card">
@@ -24,7 +24,7 @@ export function BudgetProgressCard({ budget, onEdit, onDelete }: BudgetProgressC
       </div>
 
       <div className="budget-card__amounts">
-        <strong>{formatCurrency(budget.spent)}</strong> of {formatCurrency(budget.value)}
+        <strong>{formatCurrency(budget.spent)}</strong> of {formatCurrency(budget.periodValue)}
       </div>
 
       <div className="progress-track">

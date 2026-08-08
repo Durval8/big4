@@ -108,16 +108,17 @@ class BudgetControllerTest {
     @Test
     void progressReturnsListForRange() throws Exception {
         BudgetProgressResponse p = new BudgetProgressResponse(
-                1L, "Food", new BigDecimal("400.00"), EnumSet.of(Category.GROCERIES),
-                new BigDecimal("125.50"), new BigDecimal("274.50"),
+                1L, "Food", new BigDecimal("400.00"), new BigDecimal("394.22"), EnumSet.of(Category.GROCERIES),
+                new BigDecimal("125.50"), new BigDecimal("268.72"),
                 LocalDate.of(2026, 6, 25), LocalDate.of(2026, 7, 24));
-        when(service.progress(any(), any())).thenReturn(List.of(p));
+        when(service.progress(any(), any(), any())).thenReturn(List.of(p));
 
         mockMvc.perform(get("/api/budgets/progress").param("range", "MONTH"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Food"))
+                .andExpect(jsonPath("$[0].periodValue").value(394.22))
                 .andExpect(jsonPath("$[0].spent").value(125.50))
-                .andExpect(jsonPath("$[0].remaining").value(274.50));
+                .andExpect(jsonPath("$[0].remaining").value(268.72));
     }
 
     @Test

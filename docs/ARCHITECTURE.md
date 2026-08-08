@@ -107,9 +107,17 @@ script in `index.html` applies the saved/OS theme before first paint (no flash);
 and persists it. Plain CSS (`styles/global.css`), no component library.
 
 **Why `VITE_API_BASE_URL` is empty in Docker:** the frontend is served behind the gateway, so it uses
-**relative** `/api/...` URLs against the gateway origin (one host, no CORS). Locally (`npm run dev`),
+**relative** `/api/...` URLs against the gateway origin (one host). Locally (`npm run dev`),
 Vite's `server.proxy` splits `/api/investments` → `:8081` and `/api` → `:8080` (override via
 `VITE_INVESTMENTS_PROXY_TARGET` / `VITE_API_PROXY_TARGET`).
+
+**One origin still needs a CORS allowlist.** Browsers attach an `Origin` header to every non-GET
+request even same-origin, and Spring CORS-checks anything carrying that header, so `WebConfig`'s
+allowlist gates all writes. It defaults to `http://localhost:*`; a deployment on a real domain must
+add its public origin via `CORS_ALLOWED_ORIGIN_PATTERNS` or every POST/PUT/DELETE returns
+`403 Invalid CORS request` while reads keep working. The investments-service has no CORS config at
+all, so its writes are unaffected — which is why a misconfiguration presents as "budgets and
+transactions are broken but investments are fine".
 
 ## Follow-ups
 
