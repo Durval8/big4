@@ -27,12 +27,16 @@ domain/       AccountType, TransactionType, Category (enums), Transaction, Budge
 repository/   TransactionRepository, BudgetRepository,
               InvestmentCashFlowRepository, InvestmentValuationRepository
 dto/          TransactionRequest/Response, BalanceSummaryResponse, AccountBalances,
-              BudgetRequest/Response, BudgetProgressResponse, TimeRange, Period, ErrorResponse
+              BudgetRequest/Response, BudgetProgressResponse, TimeRange, Period, ErrorResponse,
+              AnalyticsResponse, CategoryTotal, TimeBucket, BucketUnit (owns bucket-granularity
+                derivation as static/instance logic on the enum)
 service/      TransactionService (CRUD + cross-field validation; rejects INVESTING),
               BalanceService (dashboard metrics; folds the cash-flow projection into cash
                 balances, reads the valuation projection for the INVESTING balance),
-              BudgetService (CRUD + per-period spend)
-controller/   TransactionController, BalanceController, BudgetController
+              BudgetService (CRUD + per-period spend),
+              AnalyticsService (Dashboard spending visualizations; third aggregate consumer of
+                TransactionRepository's unpaginated range finder, alongside the two above)
+controller/   TransactionController, BalanceController, BudgetController, AnalyticsController
 messaging/    InvestmentsMessaging (mirror of the broker names), CashLegCommand, ValueSnapshot
                 (consumer-side mirror records), InvestmentCashLegConsumer (idempotent),
               InvestmentValuationConsumer (last-write-wins)
@@ -46,8 +50,13 @@ service. What remains is the two projections it consumes over RabbitMQ, which `B
 into the dashboard exactly as before (same math, message-sourced).
 
 **Shared period resolution:** `dto/Period.resolve(range, from, to, today)` turns the query params
-into a `[from, to]` window; `BalanceController` and `BudgetController` both use it so balances and
-budgets share one window.
+into a `[from, to]` window; `BalanceController`, `BudgetController` and `AnalyticsController` all
+use it so balances, budgets and analytics share one base window. `AnalyticsController` additionally
+passes the raw (pre-`Period.resolve`) `from` param into `AnalyticsService`, alongside the resolved
+window — the service needs to know whether the caller named explicit dates (which escapes its
+earliest-transaction floor) or a named `range`/nothing (which doesn't), a distinction `Period`
+itself doesn't preserve. See `docs/API.md#analytics` and the design spec for the one-year cap and
+floor `AnalyticsService` applies on top of the shared resolution.
 
 **Why JPA auditing is its own config:** `@EnableJpaAuditing` lives in `config/JpaConfig`, not on the
 application class — otherwise `@WebMvcTest` slices (no JPA) fail wiring the auditing handler. See

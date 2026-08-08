@@ -99,6 +99,38 @@ Implemented in `BalanceService.summarize()`
 verified end-to-end against hand-computed examples during implementation
 (see `docs/API.md` for the worked example).
 
+## Analytics aggregation
+
+`GET /api/analytics` (`AnalyticsService`) backs the Dashboard's spending-visualization section —
+see the [design spec](superpowers/specs/2026-08-02-transaction-analytics-design.md) for the full
+rationale. Its semantics are a deliberate departure from the dashboard metrics above in one
+specific way, which is the part most likely to cause a "the numbers don't match" report:
+
+- **Category totals reconcile against `netSpending`, not `spending`.** `spending` folds in
+  `TRANSFER` rows into `SAVINGS`; `TRANSFER`/`ADJUSTMENT` carry no `category` at all (see the
+  `Transaction` entity above), so they structurally cannot appear in a category breakdown. The
+  analytics endpoint's `totalExpense` therefore equals `netSpending`, never `spending`, for the
+  same window.
+- **Window resolution is analytics-specific**, not shared with balances/budgets despite taking the
+  same `range`/`from`/`to` params: a **one-year cap** (so `range=ALL` means "the last year," not
+  1970 onward) followed by an **earliest-transaction floor applied to every named range**, not just
+  `ALL` — see `docs/API.md#analytics` for the exact two-step resolution and how it diverges from
+  `GET /api/budgets/progress`'s `ALL` handling (there, only the *proration anchor* moves; here, the
+  queried window itself is re-anchored).
+- **Bucket granularity** (`DAY`/`WEEK`/`MONTH`) is derived purely from the final window length, via
+  `BucketUnit.forWindow` — never passed by the client, never stepped down for a short window (that
+  rule was considered and dropped; see the spec). `WEEK` buckets anchor at the window's `from`;
+  `MONTH` buckets align to calendar months, so the first/last bucket may be partial.
+- **Prior-period comparison** (`previousFrom`/`previousTo`, and `CategoryTotal.previousAmount`) is
+  the immediately preceding window of equal length, omitted entirely (all nulled) when nothing
+  precedes the resolved window.
+- **Invariant**: for any window, `totalExpense == netSpending` (from `GET /api/balances` over the
+  same window) and `Σ categories[].amount == totalExpense` — the second half holds only because
+  `category` is required for `EXPENSE` at the API layer (`TransactionService`), while the DB column
+  is nullable; a category-less `EXPENSE` row inserted by bypassing the API would count toward
+  `totalExpense` but not toward any category row. `AnalyticsIT` asserts this against API-created
+  data only.
+
 ## Entity: `Budget`
 
 A named spending target tracked against a set of categories.

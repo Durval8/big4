@@ -1,8 +1,9 @@
 # Transaction analytics & Dashboard visualizations — design
 
-**Status: Approved design, not yet implemented.** Brainstormed and agreed 2026-08-02. Ready to go
-through `writing-plans` whenever implementation is picked up — no further design confirmation
-needed unless the codebase has drifted since this date.
+**Status: Backend implemented and tested 2026-08-08** (`AnalyticsService`/`AnalyticsController`/
+`BucketUnit` + unit/slice/integration tests, all green). **Frontend (the actual charts) not yet
+started.** Brainstormed and agreed 2026-08-02, refined 2026-08-08 (chart types locked, see [Chart
+types](#chart-types)).
 
 ## Why
 
@@ -463,3 +464,18 @@ is the likely bug — it only shows up for a user who has never touched the them
   for income-vs-expense and horizontally for movers), since only chart 1 had been an open question
   but 2–4 had never been stated as explicit types either. Renamed the planned `CategoryDonut.tsx`
   component to `CategoryFlowChart.tsx` and swapped the `arcPath` helper for `sankeyLinkPath`.
+- 2026-08-08 — backend implemented: `BucketUnit`, `AnalyticsResponse`/`CategoryTotal`/`TimeBucket`,
+  `AnalyticsService`, `AnalyticsController`, plus `AnalyticsServiceTest`/`AnalyticsControllerTest`/
+  `BucketUnitTest` (fast tier) and `AnalyticsIT` (Testcontainers, including the
+  `totalExpense == netSpending` reconciliation invariant against `/api/balances`) — 128 backend
+  tests green. One deviation from the spec text as written: `AnalyticsService` does not call
+  `Period.resolve` or `LocalDate.now()` itself; `AnalyticsController` resolves the base window (as
+  it already does for balances/budgets) and passes both the resolved window and the raw `from`
+  param into the service, which needs the latter to distinguish "explicit dates" from "a named
+  range" for the earliest-transaction floor. Also confirmed `make up-test-data`'s fixture already
+  contains `INCOME` rows (10, across 5 categories) and spans enough months/categories to exercise
+  all four charts for `MONTH`; `YEAR`/`ALL` will still hide the movers chart on that fixture alone,
+  since it has under a year of history — expected per the render-thresholds section, not a fixture
+  gap. Docs updated: `docs/API.md` (new Analytics section), `docs/DATA_MODEL.md` (new Analytics
+  aggregation section), `docs/ARCHITECTURE.md` (backend package listing + shared period resolution
+  note).

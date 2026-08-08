@@ -28,7 +28,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     /**
      * Unpaginated date-range lookup retained for the aggregate consumers
      * ({@link com.financedash.service.BalanceService},
-     * {@link com.financedash.service.BudgetService}), which sum over the whole range
+     * {@link com.financedash.service.BudgetService},
+     * {@link com.financedash.service.AnalyticsService}), which sum over the whole range
      * rather than serving a page. The paginated variants above back
      * GET /api/transactions only.
      */
