@@ -1,8 +1,9 @@
 # Robust news feed: Guardian + topic modeling + Elasticsearch, as its own page — design
 
-**Status: Brainstormed and partially agreed 2026-08-08. One architectural fork (Elasticsearch
-ownership) is deliberately left open below with a pros/cons analysis, not a locked decision. Not
-approved for implementation until that fork is resolved.**
+**Status: Approved design 2026-08-08, not yet implemented.** The Elasticsearch-ownership fork is
+resolved — **Option A**, below: `news-service` owns Elasticsearch exclusively and serves the News
+page's API directly. The pros/cons analysis is kept for the record (it's the reasoning the decision
+rests on), not because the choice is still open.
 
 ## Why
 
@@ -46,7 +47,7 @@ the investment goes into a proper search/aggregation-backed corpus.
    singleton Mongo document — a real corpus with faceted search (by symbol, by theme), not just a
    fixed 7-item list.
 
-## Open architectural fork: who owns Elasticsearch?
+## Elasticsearch ownership (locked: Option A)
 
 The pipeline naturally splits into two halves: **producing** articles (Guardian fetch → MALLET →
 Guardian again → index) needs the held-symbol set, which only `investments-service` has; **serving**
@@ -128,12 +129,12 @@ investments-service ──resolves symbols──▶ (in-process pipeline OR trig
   documented either way; sharing it only removes the *service* boundary, not the *infrastructure*
   cost.
 
-**Recommendation: Option A.** It costs one extra module but buys back the exact invariant this
-system has protected everywhere else, and the messaging shape (investments-service → news-service,
-one-way, last-write-wins) is a straight copy of the `ValueSnapshot` pattern already proven in
-production. Left open per instruction to present both rather than lock it — **this must be resolved
-before implementation starts**, since it decides whether news-service is a real module or a package
-inside investments-service.
+**Decision: Option A.** It costs one extra module but buys back the exact invariant this system has
+protected everywhere else, and the messaging shape (investments-service → news-service, one-way,
+last-write-wins) is a straight copy of the `ValueSnapshot` pattern already proven in production.
+`news-service` owns Elasticsearch exclusively; the News page is served **exclusively** by
+`news-service`'s own API — investments-service never queries Elasticsearch, and nothing about the
+News page routes through investments-service or backend.
 
 ## Pipeline detail
 
@@ -218,25 +219,116 @@ discovery scaffolding, never shown. Unlike pass 1, pass-2 query volume is now **
 pipeline run regardless of portfolio size**, which is a meaningful efficiency property: a
 20-holding portfolio costs the same pass-2 budget as a 3-holding one.
 
-### Elasticsearch index
+### Elasticsearch design
 
-One index (name TBD, e.g. `news_articles`), one document per served article:
+`news-service` owns two indices — a growing article corpus, and a tiny singleton document
+recording what the *current* pipeline run considers relevant. They're separated because they
+answer different questions and change at different rates: articles accumulate across many runs;
+"what are today's 7 themes" is replaced wholesale every run.
+
+#### `news_articles` — the corpus, one document per distinct article
+
+**Document identity is the whole design problem here.** Every 4h (or on-trigger) pipeline run does
+its own pass 1 → MALLET → pass 2, and the same real-world article can legitimately resurface across
+runs — a still-developing story stays in Guardian's "recent" window for days, and consecutive runs
+may re-derive an overlapping (not identical) set of themes. Three requirements follow directly:
+
+1. **The same article must never become two documents**, no matter how many runs re-surface it.
+2. **An article's theme list should accumulate, not flip-flop** — if run N tags it
+   `"AI chip export controls"` and run N+3 re-surfaces it under `"chipmaker earnings"` too, both
+   themes are genuinely true of that article; losing the first on overwrite would make the corpus
+   less useful over time, not more.
+3. **Recency of *when this was last relevant* must survive independently of `publishedAt`** — a
+   week-old article resurfacing today is a different signal than one nobody's queried back into
+   view since it was published.
+
+**Resolution: use Guardian's own article `id` as the Elasticsearch `_id`**, and **upsert** on every
+pass-2 write via a script update (or read-modify-write, given expected volume is a few hundred
+documents per run at most) that unions the incoming theme(s) into the existing `themes` array
+instead of replacing it, and bumps `lastSeenAt`. Guardian's `id` (e.g.
+`technology/2026/aug/03/apple-earnings-report`) is already a stable, globally unique key — no
+hashing or URL-normalization needed, and it doubles as the natural idempotency key the same way
+`eventId` does for cash-leg commands elsewhere in this system, just for a different reason (dedup
+across runs, not exactly-once delivery).
+
+**Mapping:**
 
 ```jsonc
+PUT /news_articles
 {
-  "themes":        ["AI chip export controls"],   // which of the 7 theme queries produced this
-  "headline":      "…",
-  "trailText":     "…",                    // Guardian's summary field
-  "url":           "https://…",            // dedup key
-  "source":        "The Guardian",
-  "sectionName":   "Technology",
-  "publishedAt":   "<Instant>",
-  "ingestedAt":    "<Instant>"
+  "settings": {
+    "number_of_shards": 1,      // single-node ES for a single-user app; no sharding need
+    "number_of_replicas": 0,    // no HA requirement locally or in the current deployment shape
+    "refresh_interval": "5s"    // write volume is a few hundred docs every 4h — no need for near-realtime
+  },
+  "mappings": {
+    "properties": {
+      "headline":      { "type": "text", "analyzer": "english" },   // free-text search, stemmed
+      "trailText":     { "type": "text", "analyzer": "english" },   // Guardian's summary field
+      "url":           { "type": "keyword" },                       // exact-match, display link
+      "source":        { "type": "keyword" },                       // "The Guardian" today; future-proofs a 2nd source
+      "sectionName":   { "type": "keyword" },                       // e.g. "Technology", "Business"
+      "themes":        { "type": "keyword" },                       // array; exact-match facet + filter, union'd on upsert
+      "publishedAt":   { "type": "date" },                          // Guardian's publication instant
+      "firstIndexedAt":{ "type": "date" },                          // set once, never overwritten
+      "lastSeenAt":    { "type": "date" }                           // bumped every run that re-surfaces this article
+    }
+  }
 }
 ```
 
-No per-symbol attribution field (deliberately — see above: this feed is portfolio-wide by design,
-not indexed back to "which holding caused this").
+`headline`/`trailText` are `text` (analyzed, stemmed via the `english` analyzer) because they're
+genuinely searched, not just displayed. Everything else is `keyword` — exact-match filtering and
+aggregation, never full-text matched. `themes` is `keyword`, not `text`: theme strings are
+MALLET-extracted labels, treated as tags to filter/facet by, not prose to tokenize.
+
+**Write path:** at the end of pass 2, bulk-upsert the deduplicated result set via the `_bulk` API
+using `_id = guardianArticleId` for each doc, with a partial-update script:
+`ctx._source.themes = (ctx._source.themes + params.newThemes) as a set; ctx._source.lastSeenAt = params.now`,
+falling back to a plain index (with `firstIndexedAt = lastSeenAt = now`) when the document doesn't
+exist yet.
+
+**Retention.** An accumulating corpus without a cap eventually just becomes storage cost with no
+UX benefit — old, no-longer-relevant articles won't win the theme-facet filter (see query patterns
+below) but would still bloat a `match_all`/recency browse. Locked default: a periodic delete-by-query
+job (piggybacking on the same scheduler as the pipeline) purges documents whose `lastSeenAt` is
+older than `NEWS_RETENTION_DAYS` (proposed default **90**) — pruning on *last relevance*, not
+`publishedAt`, so a genuinely long-running story that keeps resurfacing under new themes is never
+purged out from under itself.
+
+#### `news_pipeline_state` — singleton document, "what's current"
+
+```jsonc
+{
+  "_id": "current",
+  "themes": ["AI chip export controls", "chipmaker earnings", "…"],  // exactly the last run's 7
+  "runAt": "<Instant>"
+}
+```
+
+This exists because the theme facet chips the News page shows should reflect **the latest run's 7
+themes**, not every theme ever seen across the corpus's lifetime (which would grow to dozens as
+`news_articles` accumulates history and become a useless, ever-lengthening filter list). Keeping
+"today's 7" as its own singleton — the same shape as the old Mongo `news_feed` singleton this
+feature is superseding in ambition, just now living in Elasticsearch since news-service has no
+other datastore — cleanly separates "what to filter by" from "what's in the corpus." This also
+folds in what an earlier draft of this spec flagged as an open question (news-service's own
+pipeline-state persistence) — no second datastore needed; it's a second small index in the same ES.
+
+#### Query patterns (serving the News page)
+
+- **Default view** (no filter selected): `GET /news_articles/_search` sorted `publishedAt desc`,
+  paginated (`from`/`size`; `search_after` if deep pagination ever matters, unlikely at this scale).
+- **Theme chip selected**: `{"query": {"terms": {"themes": ["<selected theme>"]}}}`, same sort.
+- **Chip labels**: read once from `GET /news_pipeline_state/_doc/current` — not a `terms`
+  aggregation over `news_articles.themes`, precisely to avoid surfacing stale historical themes as
+  filter options.
+- **(Later, optional) free-text search box**: `multi_match` over `headline^2` and `trailText`,
+  boosting headline matches — not part of this spec's locked scope, noted as a natural extension
+  the index shape already supports for free.
+
+No aggregation is needed to compute "top 7" at read time — that work already happened once, in the
+pipeline, and is cached verbatim in `news_pipeline_state`.
 
 Elasticsearch earns its place here beyond "the user asked for it": native relevance scoring (BM25)
 for pass-2 ranking, faceted filtering by symbol or theme on the News page, and a durable growing
@@ -266,6 +358,7 @@ support search/browse, not just a fixed list.
 | `NEWS_LOOKBACK_HOURS` | `48` | pass-1 and pass-2 article window |
 | `NEWS_CORPUS_SIZE` | `200` | pass-1 pooled corpus size (Guardian's max `page-size`) |
 | `MALLET_NUM_THEMES` | `7` | themes extracted per pipeline run, and pass-2 query count |
+| `NEWS_RETENTION_DAYS` | `90` | `news_articles` docs purged once `lastSeenAt` is older than this |
 
 ## Testing (sketch — firms up once the ownership fork is resolved)
 
@@ -273,33 +366,42 @@ support search/browse, not just a fixed list.
   `FinnhubNewsProvider` precedent (no embedded HTTP mock server — see `docs/TESTING.md`).
 - MALLET theme extraction: unit tests over fixed input corpora with known expected top terms,
   isolated from any HTTP/DB dependency.
-- Pipeline end-to-end: Testcontainers Elasticsearch + RabbitMQ (if Option A), asserting pass-1
-  results never leak into the index and pass-2 results do.
+- Pipeline end-to-end: Testcontainers Elasticsearch + RabbitMQ, asserting pass-1 results never leak
+  into the index and pass-2 results do.
+- Upsert semantics: re-running the pipeline against an article already in `news_articles` merges
+  themes (union, not overwrite) and bumps `lastSeenAt` without creating a duplicate document or
+  losing a previously-attached theme.
+- Retention: a document whose `lastSeenAt` predates `NEWS_RETENTION_DAYS` is purged by the sweep;
+  one that resurfaces (bumping `lastSeenAt`) the day before the cutoff survives.
+- `news_pipeline_state`: a full pipeline run overwrites the singleton wholesale (not a merge, unlike
+  `news_articles`) — assert stale themes from a prior run don't linger as chip options.
 - Contract test for the new `investment.portfolio` message, mirroring
   `InvestmentMessageContractTest`'s JSON-fixture approach.
 
 ## Deviations & notes
 
-- Deviates from a literal reading of "Elasticsearch owned by both services" — see the fork above;
-  Option A is recommended but not locked.
+- Deviates from the user's original "Elasticsearch owned by both services" framing — resolved to
+  Option A (see above) after an explicit pros/cons request; `news-service` is the sole ES
+  reader/writer and the sole thing that serves the News page.
 - The Investments-page card and this new page are **fully independent** after this change: two
   news sources (Finnhub vs Guardian), two refresh cadences, two storage shapes, sharing only "which
   symbols are currently held."
+- `news_articles` documents carry no symbol attribution (by design, per the aggregated-pass-1
+  decision) and no run identifier either — an article belongs to the corpus, not to any one
+  pipeline run. `news_pipeline_state` is what's run-scoped.
 
 ## Open questions
 
 1. **Does pooled LDA actually stabilize at ≤200 documents?** The aggregated-corpus approach is the
    mitigation, not a guarantee — needs empirical validation once real Guardian responses are in
    hand; TF-IDF fallback is the documented escape hatch if 7 themes come out noisy.
-2. **Elasticsearch ownership fork** — must be resolved before implementation (see above).
-3. **Guardian rate limits/tier** — unlike Finnhub's documented 60/min free tier already reused for
+2. **Guardian rate limits/tier** — unlike Finnhub's documented 60/min free tier already reused for
    pricing, Guardian's free-tier quota hasn't been checked yet. Call volume is now cheap and
    portfolio-size-independent though: **1 pass-1 call + 7 pass-2 calls per pipeline run**, down
    from the first draft's per-symbol scaling.
-4. **news-service's own persistence for pipeline state** (last-run timestamps, dead-letter/retry
-   bookkeeping) — Elasticsearch alone may be sufficient (a small state document) or a dedicated
-   store may be simpler; not decided.
-5. **Company-name query construction at portfolio scale** — a single Guardian query OR-ing every
+3. **Company-name query construction at portfolio scale** — a single Guardian query OR-ing every
    held company name works cleanly for a handful of holdings; Guardian's query-length limits for a
    much larger portfolio aren't known yet (not a concern for a single-user app today, noted for
    completeness).
+4. **`NEWS_RETENTION_DAYS` default (proposed 90)** is a guess, not a measured value — revisit once
+   real corpus growth rate (articles/run after dedup) is observed.
