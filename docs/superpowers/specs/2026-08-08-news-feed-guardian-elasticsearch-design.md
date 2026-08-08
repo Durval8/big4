@@ -211,13 +211,27 @@ implementation, the fallback is simpler TF-IDF top-term extraction (MALLET suppo
 pipe infrastructure without the full LDA machinery) rather than forcing LDA to work on too little
 data.
 
+**A theme is a keyword set, not a phrase — correcting an imprecision in earlier examples above.**
+LDA doesn't produce readable phrases like "AI chip export controls"; it produces, per topic, a
+ranked list of terms by weight (e.g. `chip(0.09) export(0.07) china(0.06) semiconductor(0.05)
+restriction(0.04) tariff(0.03) nvidia(0.03)`). What this spec calls a "theme" is really **that
+keyword set**; anywhere above reads "theme" as a tidy phrase, treat it as shorthand for "the
+keyword set that theme represents." The **display label** shown as a filter chip is a cheap
+derivation — join the top 2–3 terms (`"chip / export / china"`) — not a separate modeling step. A
+genuinely readable auto-label (e.g. an LLM call per topic) is a plausible future enhancement, not
+part of this spec's locked scope. See [Browsing tags](#browsing-tags-content-type-facets-and-theme-keyword-drill-down)
+below for where the full keyword set (not just the top 2–3 used for the label) gets used.
+
 ### Pass 2 — theme-driven queries, served results
 
-**One Guardian query per extracted theme (7 queries)**, using each theme's term(s) as `q=`, same
-lookback window. **Only these results get indexed into Elasticsearch and served** — pass 1 is
-discovery scaffolding, never shown. Unlike pass 1, pass-2 query volume is now **fixed at 7 per
-pipeline run regardless of portfolio size**, which is a meaningful efficiency property: a
-20-holding portfolio costs the same pass-2 budget as a 3-holding one.
+**One Guardian query per extracted theme (7 queries)**, using that theme's **top terms** (not just
+the display label — the fuller keyword set, e.g. top 5–8 by weight) OR'd together as `q=`, same
+lookback window. Querying on the actual keyword weights MALLET found, rather than the 2–3-term
+display label, is closer to what the topic model actually determined and gives pass 2 better
+recall. **Only these results get indexed into Elasticsearch and served** — pass 1 is discovery
+scaffolding, never shown. Unlike pass 1, pass-2 query volume is now **fixed at 7 per pipeline run
+regardless of portfolio size**, which is a meaningful efficiency property: a 20-holding portfolio
+costs the same pass-2 budget as a 3-holding one.
 
 ### Elasticsearch design
 
@@ -269,6 +283,7 @@ PUT /news_articles
       "source":        { "type": "keyword" },                       // "The Guardian" today; future-proofs a 2nd source
       "sectionName":   { "type": "keyword" },                       // e.g. "Technology", "Business"
       "themes":        { "type": "keyword" },                       // array; exact-match facet + filter, union'd on upsert
+      "contentTags":   { "type": "keyword" },                       // array; keyword-classifier tags, see Browsing tags
       "publishedAt":   { "type": "date" },                          // Guardian's publication instant
       "firstIndexedAt":{ "type": "date" },                          // set once, never overwritten
       "lastSeenAt":    { "type": "date" }                           // bumped every run that re-surfaces this article
@@ -277,16 +292,23 @@ PUT /news_articles
 }
 ```
 
+`bodyText` (fetched alongside `trailText` for MALLET's input) is deliberately **not** a mapped
+field — it's read transiently during the pipeline run (for topic modeling and for content-tag
+keyword matching, below) and discarded, keeping the index lean. Only the derived signals
+(`themes`, `contentTags`) and the display-worthy `trailText` summary persist.
+
 `headline`/`trailText` are `text` (analyzed, stemmed via the `english` analyzer) because they're
 genuinely searched, not just displayed. Everything else is `keyword` — exact-match filtering and
 aggregation, never full-text matched. `themes` is `keyword`, not `text`: theme strings are
 MALLET-extracted labels, treated as tags to filter/facet by, not prose to tokenize.
 
-**Write path:** at the end of pass 2, bulk-upsert the deduplicated result set via the `_bulk` API
-using `_id = guardianArticleId` for each doc, with a partial-update script:
-`ctx._source.themes = (ctx._source.themes + params.newThemes) as a set; ctx._source.lastSeenAt = params.now`,
-falling back to a plain index (with `firstIndexedAt = lastSeenAt = now`) when the document doesn't
-exist yet.
+**Write path:** for each pass-2 result, run the content-tag keyword classifiers (below) against its
+`headline`/`trailText`/transient `bodyText` to compute `contentTags`, then bulk-upsert the
+deduplicated result set via the `_bulk` API using `_id = guardianArticleId` for each doc, with a
+partial-update script: `ctx._source.themes = (ctx._source.themes + params.newThemes) as a set;
+ctx._source.contentTags = (ctx._source.contentTags + params.newTags) as a set;
+ctx._source.lastSeenAt = params.now`, falling back to a plain index (with `firstIndexedAt =
+lastSeenAt = now`) when the document doesn't exist yet.
 
 **Retention.** An accumulating corpus without a cap eventually just becomes storage cost with no
 UX benefit — old, no-longer-relevant articles won't win the theme-facet filter (see query patterns
@@ -301,7 +323,14 @@ purged out from under itself.
 ```jsonc
 {
   "_id": "current",
-  "themes": ["AI chip export controls", "chipmaker earnings", "…"],  // exactly the last run's 7
+  "themes": [
+    {
+      "label":    "chip / export / china",                              // top 2-3 terms, for the chip
+      "keywords": ["chip", "export", "china", "semiconductor",
+                   "restriction", "tariff", "nvidia"]                    // full weighted term set (top 5-8)
+    }
+    // … up to 7
+  ],
   "runAt": "<Instant>"
 }
 ```
@@ -314,15 +343,25 @@ feature is superseding in ambition, just now living in Elasticsearch since news-
 other datastore — cleanly separates "what to filter by" from "what's in the corpus." This also
 folds in what an earlier draft of this spec flagged as an open question (news-service's own
 pipeline-state persistence) — no second datastore needed; it's a second small index in the same ES.
+Carrying the full `keywords` list per theme (not just `label`) is what makes theme-specific
+keyword browsing possible — see below.
 
 #### Query patterns (serving the News page)
 
 - **Default view** (no filter selected): `GET /news_articles/_search` sorted `publishedAt desc`,
   paginated (`from`/`size`; `search_after` if deep pagination ever matters, unlikely at this scale).
-- **Theme chip selected**: `{"query": {"terms": {"themes": ["<selected theme>"]}}}`, same sort.
+- **Theme chip selected**: `{"query": {"terms": {"themes": ["<selected theme label>"]}}}`, same sort.
+- **Theme keyword drill-down** (see Browsing tags below): `{"query": {"match": {"trailText":
+  "<one keyword from that theme's set>"}}}` **AND**-ed with the theme filter above — narrows an
+  already-theme-filtered view by one of its underlying terms, computed live rather than stored
+  per-article (see rationale below).
+- **Content tag selected** (e.g. "Future moves"): `{"query": {"terms": {"contentTags":
+  ["future-moves"]}}}`, composable with a theme filter (both are `terms` filters, so they `AND`
+  naturally in a `bool` query).
 - **Chip labels**: read once from `GET /news_pipeline_state/_doc/current` — not a `terms`
   aggregation over `news_articles.themes`, precisely to avoid surfacing stale historical themes as
-  filter options.
+  filter options. Content-tag chip labels are static (they're a fixed, code-defined list, not
+  derived per run).
 - **(Later, optional) free-text search box**: `multi_match` over `headline^2` and `trailText`,
   boosting headline matches — not part of this spec's locked scope, noted as a natural extension
   the index shape already supports for free.
@@ -335,18 +374,96 @@ for pass-2 ranking, faceted filtering by symbol or theme on the News page, and a
 corpus instead of the existing card's single overwritten singleton document — the News page can
 support search/browse, not just a fixed list.
 
+## Browsing tags: content-type facets and theme-keyword drill-down
+
+Themes answer "what story is this." A second, orthogonal question is useful too: "what *kind* of
+coverage is this" — is it forward-looking speculation, a results announcement, a regulatory
+development? That's a different axis, and it doesn't need MALLET — simple keyword/phrase spotting
+against `headline`/`trailText`/transient `bodyText` is enough, computed per-article at pipeline
+write time (same point as content-tag assignment in the write path above), stored in `contentTags`.
+
+### Content-type tags (keyword-classifier mechanism)
+
+A **config-driven list of `{tagName: [phrases]}`** — a static resource file in news-service (not
+env vars; the list is long and structural, not a per-deployment tunable), checked against each
+pass-2 article's text. A tag applies if **any** of its phrases match (case-insensitive, simple
+substring or phrase match — no NLP needed for this pass). An article can carry multiple tags.
+
+| Tag | Example phrases | What it surfaces |
+|---|---|---|
+| `future-moves` | "expected to", "plans to", "forecast", "set to", "poised to", "guidance", "anticipated" | Forward-looking coverage — what's coming, not what happened |
+| `earnings` | "quarterly results", "EPS", "revenue beat", "revenue miss", "reported earnings" | Results/reporting coverage |
+| `regulatory` | "antitrust", "regulator", "lawsuit", "investigation", "fine", "compliance" | Legal/regulatory developments |
+| `mergers-acquisitions` | "acquire", "acquisition", "merger", "buyout", "deal to buy" | M&A activity |
+| `leadership-change` | "steps down", "resign", "named CEO", "appoint", "succeed as" | Executive/leadership moves |
+| `analyst-rating` | "price target", "upgrade", "downgrade", "analyst rating", "outperform" | Sell-side opinion, not company action |
+
+This table is a starting point, not a locked final list — same "not decided" status as the
+retention window default. The mechanism (keyword-classifier → `contentTags` array) is the locked
+part; the specific tag set is expected to be tuned once real Guardian output is in hand (a phrase
+list that's too broad over-tags everything, too narrow tags nothing — this needs iteration against
+real data, not guesswork).
+
+**Why keyword-spotting and not another MALLET pass**: these are binary/categorical distinctions
+("is this forward-looking, yes/no"), not clustering problems — topic modeling finds latent
+groupings in a corpus, it doesn't answer a yes/no question about one document. A rule-based
+classifier is the right-sized tool, and it's ordinary Java string matching, not a second ML
+dependency.
+
+### Theme-specific keyword browsing
+
+Formalizes what "theme" already carries once `news_pipeline_state.themes[].keywords` exists (see
+above): each of the 7 themes is a **set of keywords**, not just a display label. Two consumers of
+that keyword set, already reflected above:
+
+1. **Pass 2 query construction** uses the full keyword set (top 5–8 terms), not just the 2–3-term
+   label — better recall than querying on the label alone.
+2. **Frontend drill-down**: selecting a theme chip can expose its underlying keyword list (e.g. as
+   secondary sub-chips: `chip` · `export` · `china` · `semiconductor` · …); clicking one **narrows**
+   the already-theme-filtered view to articles also matching that specific term, computed as a live
+   `match` query rather than a stored per-article field — storing "which keyword(s) of its theme
+   matched this article" per document would need to happen at index time per theme per article
+   (multiplicative bookkeeping for no real benefit, since the query-time version is one extra
+   clause and just as fast at this corpus size).
+
+### Other ideas considered, and why they're scoped in or out
+
+- **Section facet (`sectionName`) — scoped in, effectively free.** Already indexed as `keyword` for
+  display; promoting it to a third filter dimension (Technology / Business / …) alongside themes
+  and content tags costs nothing new to build.
+- **Recency lane ("Just In") — scoped in, effectively free.** `publishedAt` is already indexed and
+  sorted on; a "published in the last N hours" quick-filter is a `range` query on data already
+  there, no pipeline change needed.
+- **Sentiment tag (bullish/bearish keyword spotting: "surge", "plunge", "rally", "selloff") —
+  plausible, same keyword-classifier mechanism as content tags above.** Not included in the locked
+  tag table because sentiment words are far more ambiguous out of context than "expected to" or
+  "antitrust" (a headline can use "surge" ironically or about volume, not price) — worth a
+  dedicated accuracy check before shipping, not a same-day add.
+- **Named-entity tagging (e.g. tag which companies are actually *mentioned*, not just the
+  seed-query symbols) — the most direct realization of "similar stocks," explicitly scoped
+  out for now.** True NER is a real NLP dependency this spec hasn't introduced (MALLET does topic
+  modeling, not entity recognition); a cheap approximation — matching against a static list of
+  known company names — would work but needs that list maintained and is a meaningfully different
+  scope decision than reusing MALLET. Flagged as the most promising *next* enhancement, not part of
+  this spec.
+
 ## Frontend
 
 - **New route/page** (e.g. `/news`), own nav entry — separate from the Investments page, which is
   untouched.
-- **Theme facets** (up to 7, one per pipeline run) as the primary filter — there's no per-symbol
-  filter since the index carries no symbol attribution; the held-symbol set only ever influences
-  pass 1 upstream, not what's shown.
+- **Three filter dimensions**, all composable (`AND`ed):
+  - **Theme facets** (up to 7, one per pipeline run) — the primary filter, each expandable into its
+    underlying keyword sub-chips for further drill-down (see Browsing tags above).
+  - **Content-type tag chips** (future moves, earnings, regulatory, M&A, leadership, analyst
+    rating) — a fixed, code-defined list, independent of any given run's themes.
+  - **Section** and **"Just In"** quick-filters (Guardian's `sectionName`; a recent-hours toggle).
+  - No per-symbol filter — the index carries no symbol attribution; the held-symbol set only ever
+    influences pass 1 upstream, not what's shown.
 - Backed by news-service's own `/api/news` endpoint (gateway-routed directly, no
   backend/investments-service proxying — same shape as investments-service's existing direct
   frontend access).
-- Empty state per theme that returns nothing, same honest-empty-state philosophy as the existing
-  card.
+- Empty state per filter combination that returns nothing, same honest-empty-state philosophy as
+  the existing card.
 
 ## Config (new, on whichever service ends up owning the pipeline per the resolved fork)
 
@@ -359,6 +476,7 @@ support search/browse, not just a fixed list.
 | `NEWS_CORPUS_SIZE` | `200` | pass-1 pooled corpus size (Guardian's max `page-size`) |
 | `MALLET_NUM_THEMES` | `7` | themes extracted per pipeline run, and pass-2 query count |
 | `NEWS_RETENTION_DAYS` | `90` | `news_articles` docs purged once `lastSeenAt` is older than this |
+| *(resource file, not env)* | `content-tags.yml` or similar | the `{tagName: [phrases]}` list — structural, versioned in code, not per-deployment config |
 
 ## Testing (sketch — firms up once the ownership fork is resolved)
 
@@ -375,6 +493,9 @@ support search/browse, not just a fixed list.
   one that resurfaces (bumping `lastSeenAt`) the day before the cutoff survives.
 - `news_pipeline_state`: a full pipeline run overwrites the singleton wholesale (not a merge, unlike
   `news_articles`) — assert stale themes from a prior run don't linger as chip options.
+- Content-tag classifier: unit tests per tag over fixed sentences (a "plans to launch" sentence
+  tags `future-moves`; a sentence with none of the configured phrases tags nothing); assert an
+  article can carry multiple tags; assert tags union (not overwrite) on upsert like themes do.
 - Contract test for the new `investment.portfolio` message, mirroring
   `InvestmentMessageContractTest`'s JSON-fixture approach.
 
@@ -405,3 +526,7 @@ support search/browse, not just a fixed list.
    completeness).
 4. **`NEWS_RETENTION_DAYS` default (proposed 90)** is a guess, not a measured value — revisit once
    real corpus growth rate (articles/run after dedup) is observed.
+5. **Content-tag phrase lists (the table above) are a first guess**, not tuned against real
+   Guardian output — expect false positives/negatives until iterated on actual articles.
+6. **Sentiment and named-entity tagging** are noted as plausible next steps, deliberately not
+   speced here (see Browsing tags → "Other ideas considered").
