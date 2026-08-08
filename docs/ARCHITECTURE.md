@@ -27,12 +27,16 @@ domain/       AccountType, TransactionType, Category (enums), Transaction, Budge
 repository/   TransactionRepository, BudgetRepository,
               InvestmentCashFlowRepository, InvestmentValuationRepository
 dto/          TransactionRequest/Response, BalanceSummaryResponse, AccountBalances,
-              BudgetRequest/Response, BudgetProgressResponse, TimeRange, Period, ErrorResponse
+              BudgetRequest/Response, BudgetProgressResponse, TimeRange, Period, ErrorResponse,
+              AnalyticsResponse, CategoryTotal, TimeBucket, BucketUnit (owns bucket-granularity
+                derivation as static/instance logic on the enum)
 service/      TransactionService (CRUD + cross-field validation; rejects INVESTING),
               BalanceService (dashboard metrics; folds the cash-flow projection into cash
                 balances, reads the valuation projection for the INVESTING balance),
-              BudgetService (CRUD + per-period spend)
-controller/   TransactionController, BalanceController, BudgetController
+              BudgetService (CRUD + per-period spend),
+              AnalyticsService (Dashboard spending visualizations; third aggregate consumer of
+                TransactionRepository's unpaginated range finder, alongside the two above)
+controller/   TransactionController, BalanceController, BudgetController, AnalyticsController
 messaging/    InvestmentsMessaging (mirror of the broker names), CashLegCommand, ValueSnapshot
                 (consumer-side mirror records), InvestmentCashLegConsumer (idempotent),
               InvestmentValuationConsumer (last-write-wins)
@@ -46,8 +50,13 @@ service. What remains is the two projections it consumes over RabbitMQ, which `B
 into the dashboard exactly as before (same math, message-sourced).
 
 **Shared period resolution:** `dto/Period.resolve(range, from, to, today)` turns the query params
-into a `[from, to]` window; `BalanceController` and `BudgetController` both use it so balances and
-budgets share one window.
+into a `[from, to]` window; `BalanceController`, `BudgetController` and `AnalyticsController` all
+use it so balances, budgets and analytics share one base window. `AnalyticsController` additionally
+passes the raw (pre-`Period.resolve`) `from` param into `AnalyticsService`, alongside the resolved
+window — the service needs to know whether the caller named explicit dates (which escapes its
+earliest-transaction floor) or a named `range`/nothing (which doesn't), a distinction `Period`
+itself doesn't preserve. See `docs/API.md#analytics` and the design spec for the one-year cap and
+floor `AnalyticsService` applies on top of the shared resolution.
 
 **Why JPA auditing is its own config:** `@EnableJpaAuditing` lives in `config/JpaConfig`, not on the
 application class — otherwise `@WebMvcTest` slices (no JPA) fail wiring the auditing handler. See
@@ -83,17 +92,24 @@ This service **owns the message contract**; the backend's `messaging/` records m
 
 `frontend/src/`
 ```
-types/        transaction.ts, budget.ts, investment.ts (share-based + PriceStatus), news.ts
+types/        transaction.ts, budget.ts, investment.ts (share-based + PriceStatus), news.ts,
+              analytics.ts
 api/          client.ts (fetch wrapper; relative base URL), transactions.ts, balances.ts,
-              budgets.ts, investments.ts, news.ts
+              budgets.ts, investments.ts, news.ts, analytics.ts
 hooks/        useTransactions, useBalances, useBudgets, useInvestments, useInvestmentNews
-                (feed + updatedAt polling), useTheme (light/dark, persisted)
+                (feed + updatedAt polling), useTheme (light/dark, persisted), useAnalytics
 lib/format.ts formatCurrency / formatPercent / formatShares / formatPrice / formatRelativeTime / …
 components/
   layout/     AppShell (nav + theme toggle), TimeRangeSelector
   dashboard/  BalanceCard, BalanceSummaryGrid (the 4 metrics),
               AccountBalancesCard (prominent grouped accounts panel), BudgetSection,
-              BudgetProgressCard, BudgetFormDrawer
+              BudgetProgressCard, BudgetFormDrawer, AnalyticsSection
+    charts/     CategoryFlowChart (single-level Sankey), SpendingTrendChart (line),
+                IncomeExpenseChart (diverging bar), CategoryMoversChart (horizontal diverging
+                bar), thresholds.ts (per-chart render thresholds), chartUtils.ts (shared SVG
+                geometry: sankeyLinkPath, divergingBarLength, axis/currency-abbreviation helpers)
+                — the first `<svg>` in this codebase; see
+                docs/superpowers/specs/2026-08-02-transaction-analytics-design.md
   transactions/ TransactionTable/Row/Filters, TransactionFormDrawer, DeleteConfirmDialog
   investments/  InvestmentTable/Row, InvestmentFormDrawer (buy / correction),
               CashOutDialog, ManualPriceDialog, NewsCard

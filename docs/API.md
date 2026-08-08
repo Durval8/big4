@@ -159,6 +159,68 @@ each a valid `Category`). `POST` → 201; `PUT` → 200 or 404.
 ### `DELETE /api/budgets/{id}`
 Returns 204, or 404.
 
+## Analytics
+
+### `GET /api/analytics`
+
+Dashboard spending visualizations — see
+[the design spec](superpowers/specs/2026-08-02-transaction-analytics-design.md) for full rationale.
+Takes the same `range` / `from` / `to` params as `GET /api/balances`, **but resolves the window
+differently**:
+
+| Param | Type | Notes |
+|---|---|---|
+| `range` | `WEEK\|MONTH\|YEAR\|ALL` | `ALL` collapses to the one-year cap below, not `1970-01-01` |
+| `from` | ISO date | naming an explicit `from` escapes the earliest-transaction floor (not the cap) |
+| `to` | ISO date | defaults to today |
+
+Two adjustments apply, in order, to whatever window `range`/`from`/`to` resolve to:
+1. **One-year cap.** A window longer than a year is clamped to `[to − 1 year + 1 day, to]`.
+2. **Earliest-transaction floor**, for **any named `range`** (not just `ALL`) — if the system's
+   first transaction is more recent than the capped `from`, the window starts there instead. An
+   **explicit `from`** escapes this (a caller naming specific dates gets those dates, capped, not a
+   second-guessed window).
+
+Returns an `AnalyticsResponse`:
+```json
+{
+  "from": "2026-07-04",
+  "to": "2026-08-02",
+  "previousFrom": "2026-06-04",
+  "previousTo": "2026-07-03",
+  "bucketUnit": "DAY",
+  "totalIncome": 3000.00,
+  "totalExpense": 1284.55,
+  "categories": [
+    { "category": "GROCERIES", "amount": 412.30, "previousAmount": 380.00 }
+  ],
+  "buckets": [
+    { "start": "2026-07-04", "income": 0.00, "expense": 42.10 }
+  ]
+}
+```
+- `from`/`to` echo the **final** window, after both adjustments — never the pre-adjustment value.
+- `previousFrom`/`previousTo` are the immediately preceding window of equal length, or **both null**
+  when nothing precedes the window (i.e. `from` is on or before the earliest transaction date).
+- `bucketUnit` is derived from the final window length, never passed by the client: `DAY` (≤31
+  days), `WEEK` (≤26 weeks), `MONTH` (otherwise — the window can't exceed a year, so nothing coarser
+  is needed).
+- `categories` is **EXPENSE only** (`TRANSFER`/`ADJUSTMENT` carry no category and are excluded from
+  every field in this response), sorted descending by `amount`. A category with no spend in either
+  period is omitted; one present in the prior period but not this one still appears with
+  `amount: 0` so a movers view can show the drop. `previousAmount` is null on every row when there's
+  no prior period at all.
+- `buckets` is **gap-filled** — every bucket in the window appears, including zero-activity ones.
+
+**Reconciles against `netSpending`, not `spending`, on `GET /api/balances`** — `spending` also
+folds in transfers into savings, which carry no category and can't appear in a category breakdown.
+`totalExpense` here always equals `netSpending` for the same window. See
+[Data Model](DATA_MODEL.md#entity-transaction) for the full semantics.
+
+**This diverges from `GET /api/budgets/progress`**, which takes the identical params: there,
+`ALL`'s queried window is unchanged (still `1970-01-01`) and only the *proration anchor* moves.
+Here the window itself is capped and re-anchored, so the two endpoints' `ALL` behavior differs.
+
 ## Investments
 
 Served by the **investments service** (MongoDB). Holdings are **share-based** and priced from

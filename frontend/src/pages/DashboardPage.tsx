@@ -4,6 +4,7 @@ import { TimeRangeSelector } from "../components/layout/TimeRangeSelector";
 import { BalanceSummaryGrid } from "../components/dashboard/BalanceSummaryGrid";
 import { AccountBalancesCard } from "../components/dashboard/AccountBalancesCard";
 import { BudgetSection } from "../components/dashboard/BudgetSection";
+import { AnalyticsSection } from "../components/dashboard/AnalyticsSection";
 import type { TimeRange } from "../types/transaction";
 
 export function DashboardPage() {
@@ -27,6 +28,7 @@ export function DashboardPage() {
       ) : null}
 
       <BudgetSection range={range} />
+      <AnalyticsSection range={range} />
     </div>
   );
 }
