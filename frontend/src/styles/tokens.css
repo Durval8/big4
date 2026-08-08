@@ -26,6 +26,21 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
 
   --transition-fast: 150ms ease;
+
+  /* iOS system-color categorical palette — used only by the analytics category flow diagram.
+   * --chart-8 (systemGray) is reserved for the aggregated "Other" slice. systemRed is
+   * deliberately absent: it's already --color-negative, and a red category slice next to a red
+   * "over budget" bar would invite a false reading. Verify these hex pairs against Apple's
+   * current HIG color reference before relying on them for anything beyond this chart — at least
+   * one (systemTeal light) is version-sensitive; see the design spec. */
+  --chart-1: #007aff; /* systemBlue */
+  --chart-2: #ff9500; /* systemOrange */
+  --chart-3: #af52de; /* systemPurple */
+  --chart-4: #34c759; /* systemGreen */
+  --chart-5: #ff2d55; /* systemPink */
+  --chart-6: #30b0c7; /* systemTeal */
+  --chart-7: #ffcc00; /* systemYellow */
+  --chart-8: #8e8e93; /* systemGray — "Other" */
 }
 
 /* Dark palette. A manual choice (data-theme) always wins; with no choice set we follow the OS. */
@@ -40,6 +55,15 @@
   --color-positive: #32d74b;
   --color-negative: #ff453a;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+
+  --chart-1: #0a84ff;
+  --chart-2: #ff9f0a;
+  --chart-3: #bf5af2;
+  --chart-4: #30d158;
+  --chart-5: #ff375f;
+  --chart-6: #40c8e0;
+  --chart-7: #ffd60a;
+  --chart-8: #8e8e93;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -54,5 +78,14 @@
     --color-positive: #32d74b;
     --color-negative: #ff453a;
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+
+    --chart-1: #0a84ff;
+    --chart-2: #ff9f0a;
+    --chart-3: #bf5af2;
+    --chart-4: #30d158;
+    --chart-5: #ff375f;
+    --chart-6: #40c8e0;
+    --chart-7: #ffd60a;
+    --chart-8: #8e8e93;
   }
 }
