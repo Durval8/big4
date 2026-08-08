@@ -61,6 +61,7 @@ public class TransactionService {
     public Transaction update(Long id, TransactionRequest request) {
         validate(request);
         Transaction transaction = findById(id);
+        rejectIfSystemGenerated(transaction);
         transaction.setDescription(request.description());
         transaction.setAmount(request.amount());
         transaction.setTransactionDate(request.transactionDate());
@@ -72,10 +73,22 @@ public class TransactionService {
     }
 
     public void delete(Long id) {
-        if (!transactionRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Transaction " + id + " not found");
-        }
+        rejectIfSystemGenerated(findById(id));
         transactionRepository.deleteById(id);
+    }
+
+    /**
+     * Ledger rows generated from an investments-service cash leg are read-only. They are the source
+     * of truth for that cash movement, while the investments service still holds the corresponding
+     * position — editing or deleting one would silently change the user's balance and desync cash
+     * from holdings, with no way for the service to find out.
+     */
+    private void rejectIfSystemGenerated(Transaction transaction) {
+        if (transaction.isSystemGenerated()) {
+            throw new InvalidTransactionException(
+                    "This transaction was generated from an investment and cannot be edited or deleted; "
+                            + "change it on the Investments page instead");
+        }
     }
 
     /**
