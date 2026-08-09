@@ -160,6 +160,13 @@ specific way, which is the part most likely to cause a "the numbers don't match"
 - **Prior-period comparison** (`previousFrom`/`previousTo`, and `CategoryTotal.previousAmount`) is
   the immediately preceding window of equal length, omitted entirely (all nulled) when nothing
   precedes the resolved window.
+- **Income and expense categories are two lists, never one.** `categories` is EXPENSE-only;
+  `incomeCategories` is the INCOME counterpart, built by the same `buildCategoryTotals` pass with
+  the type as a parameter. They are kept apart at the DTO level rather than merged behind a
+  discriminator because every consumer of `categories` reads it as "spending" — merging would make
+  a salary row render as an expense in the spending breakdown and as a mover in the movers list.
+  The cash-flow diagram is the only view that wants both, and it places them on opposite sides of
+  the flow, so it gains nothing from a single list either.
 - **Invariant**: for any window, `totalExpense == netSpending` (from `GET /api/balances` over the
   same window) and `Σ categories[].amount == totalExpense` — the second half holds only because
   `category` is required for `EXPENSE` at the API layer (`TransactionService`), while the DB column

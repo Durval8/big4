@@ -97,25 +97,43 @@ types/        transaction.ts, budget.ts, investment.ts (share-based + PriceStatu
 api/          client.ts (fetch wrapper; relative base URL), transactions.ts, balances.ts,
               budgets.ts, investments.ts, news.ts, analytics.ts
 hooks/        useTransactions, useBalances, useBudgets, useInvestments, useInvestmentNews
-                (feed + updatedAt polling), useTheme (light/dark, persisted), useAnalytics
+                (feed + updatedAt polling), useTheme (light/dark, persisted), useAnalytics,
+                useIncomeExpenseSeries (own window per granularity; second /api/analytics call)
 lib/format.ts formatCurrency / formatPercent / formatShares / formatPrice / formatRelativeTime / …
 components/
-  layout/     AppShell (nav + theme toggle), TimeRangeSelector
+  layout/     AppShell (left sidebar nav + theme toggle), TimeRangeSelector
+  charts/     useCanvasChart (the shared canvas driver), canvasUtils.ts (palette/alpha, nice axis
+              ticks, label declutter, rounded-rect + Sankey-ribbon paths), bucketUtils.ts
+              (bucket regrouping + recent-activity trimming for the comparison bars), CashFlowSankey
+              (3-column income → aggregate → categories + savings), SpendingDonut (+ legend),
+              SpendingTrendChart (smoothed area), IncomeExpenseChart (grouped bars with per-period
+              savings rate), CategoryMoversChart (DOM rows, not canvas), thresholds.ts (per-chart
+              minimum-data rules)
   dashboard/  BalanceCard, BalanceSummaryGrid (the 4 metrics),
               AccountBalancesCard (prominent grouped accounts panel), BudgetSection,
-              BudgetProgressCard, BudgetFormDrawer, AnalyticsSection
-    charts/     CategoryFlowChart (single-level Sankey), SpendingTrendChart (line),
-                IncomeExpenseChart (diverging bar), CategoryMoversChart (horizontal diverging
-                bar), thresholds.ts (per-chart render thresholds), chartUtils.ts (shared SVG
-                geometry: sankeyLinkPath, divergingBarLength, axis/currency-abbreviation helpers)
-                — the first `<svg>` in this codebase; see
-                docs/superpowers/specs/2026-08-02-transaction-analytics-design.md
+              BudgetProgressCard, BudgetFormDrawer, AnalyticsSection (condensed; links to Reports)
+  reports/    KpiCard, IncomeExpenseCard (own Daily/Weekly/Monthly switch and own window —
+              deliberately independent of the page's TimeRangeSelector)
   transactions/ TransactionTable/Row/Filters, TransactionFormDrawer, DeleteConfirmDialog
   investments/  InvestmentTable/Row, InvestmentFormDrawer (buy / correction),
               CashOutDialog, ManualPriceDialog, NewsCard
   common/     Button, Select, TextField, CurrencyInput, EmptyState
-pages/        DashboardPage, TransactionsPage, InvestmentsPage
+pages/        DashboardPage, TransactionsPage, ReportsPage, InvestmentsPage
 ```
+
+**Charts are `<canvas>`, not SVG, and there is no charting library.** Every chart is drawn by hand
+through `useCanvasChart`, which sizes the backing store to `devicePixelRatio` (the reason for the
+move off SVG — hairline strokes and small axis text rendered visibly soft), re-renders from a
+`ResizeObserver` on the container rather than a window resize listener (a SPA reflows on tab
+switches and data loads without the window ever changing size), and redraws on theme changes.
+
+That last one has a trap worth knowing: canvas resolves colors **once, at draw time**, unlike
+SVG's `fill="var(--token)"`. The hook therefore watches `<html data-theme>` with a
+`MutationObserver` instead of consuming `useTheme()` — that hook holds per-component `useState`, so
+a second caller never observes `AppShell`'s toggle and the charts would silently keep the old
+palette. Relatedly, an undefined custom property resolves to `""`, which `addColorStop` rejects by
+*throwing*; the hook's color resolver falls back rather than letting one bad token name blank the
+page.
 
 **Theming:** `styles/tokens.css` defines CSS custom properties for light and dark. Dark applies via
 `:root[data-theme="dark"]`; with no manual choice it still follows `prefers-color-scheme`. An inline

@@ -194,6 +194,9 @@ Returns an `AnalyticsResponse`:
   "categories": [
     { "category": "GROCERIES", "amount": 412.30, "previousAmount": 380.00 }
   ],
+  "incomeCategories": [
+    { "category": "SALARY", "amount": 3000.00, "previousAmount": 3000.00 }
+  ],
   "buckets": [
     { "start": "2026-07-04", "income": 0.00, "expense": 42.10 }
   ]
@@ -210,6 +213,11 @@ Returns an `AnalyticsResponse`:
   period is omitted; one present in the prior period but not this one still appears with
   `amount: 0` so a movers view can show the drop. `previousAmount` is null on every row when there's
   no prior period at all.
+- `incomeCategories` is the **INCOME** counterpart, same shape and same sort. Kept as a *separate*
+  list rather than folded into `categories` with a type discriminator: every consumer of
+  `categories` means spending by it, so widening that list would make salary rows render as
+  expenses in the spending breakdown and the movers view. Only the cash-flow diagram reads both,
+  and it puts them on opposite sides.
 - `buckets` is **gap-filled** — every bucket in the window appears, including zero-activity ones.
 
 **Reconciles against `netSpending`, not `spending`, on `GET /api/balances`** — `spending` also

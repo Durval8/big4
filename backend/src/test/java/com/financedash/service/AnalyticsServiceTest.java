@@ -184,6 +184,44 @@ class AnalyticsServiceTest {
         }
 
         @Test
+        void incomeAndExpenseCategoriesLandInSeparateListsNeverBothInOne() {
+            // The cash-flow diagram reads incomeCategories as its source side; every other consumer
+            // reads categories and means EXPENSE by it. A row must never appear in both.
+            service = serviceWith();
+            LocalDate from = TO.minusDays(5);
+            when(transactionRepository.findFirstByOrderByTransactionDateAsc()).thenReturn(Optional.empty());
+            when(transactionRepository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(from, TO))
+                    .thenReturn(List.of(
+                            tx(TransactionType.EXPENSE, Category.GROCERIES, "40.00", from),
+                            tx(TransactionType.INCOME, Category.SALARY, "3000.00", from),
+                            tx(TransactionType.INCOME, Category.FREELANCE_INCOME, "500.00", from)));
+
+            AnalyticsResponse response = service.getAnalytics(from, from, TO);
+
+            assertThat(response.categories()).extracting(CategoryTotal::category)
+                    .containsExactly(Category.GROCERIES);
+            assertThat(response.incomeCategories()).extracting(CategoryTotal::category)
+                    .containsExactly(Category.SALARY, Category.FREELANCE_INCOME);
+            assertThat(response.incomeCategories()).extracting(CategoryTotal::amount)
+                    .satisfiesExactly(
+                            a -> assertThat(a).isEqualByComparingTo("3000.00"),
+                            a -> assertThat(a).isEqualByComparingTo("500.00"));
+        }
+
+        @Test
+        void incomeCategoriesEmptyWhenTheWindowHasExpensesOnly() {
+            service = serviceWith();
+            LocalDate from = TO.minusDays(5);
+            when(transactionRepository.findFirstByOrderByTransactionDateAsc()).thenReturn(Optional.empty());
+            when(transactionRepository.findByTransactionDateBetweenOrderByTransactionDateDescIdDesc(from, TO))
+                    .thenReturn(List.of(tx(TransactionType.EXPENSE, Category.GROCERIES, "40.00", from)));
+
+            AnalyticsResponse response = service.getAnalytics(from, from, TO);
+
+            assertThat(response.incomeCategories()).isEmpty();
+        }
+
+        @Test
         void gapFilledBucketsCoverTheWholeWindowContiguously() {
             service = serviceWith();
             LocalDate from = TO.minusDays(4);

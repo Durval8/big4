@@ -3,6 +3,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { DashboardPage } from "./pages/DashboardPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 import { InvestmentsPage } from "./pages/InvestmentsPage";
+import { ReportsPage } from "./pages/ReportsPage";
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
           <Route path="/investments" element={<InvestmentsPage />} />
         </Routes>
       </AppShell>

@@ -1,6 +1,12 @@
 # Transaction analytics & Dashboard visualizations — design
 
-**Status: Implemented end-to-end 2026-08-08** — backend (`AnalyticsService`/`AnalyticsController`/
+**Status: Implemented end-to-end 2026-08-08; presentation layer superseded 2026-08-09** by
+[the Reports redesign](2026-08-09-reports-redesign-design.md). The backend semantics below (window
+resolution, bucketing, prior-period comparison, the `netSpending` reconciliation) are all still
+current and unchanged — the redesign only replaced the charts and added `incomeCategories`. Original
+status line follows.
+
+**Implemented end-to-end 2026-08-08** — backend (`AnalyticsService`/`AnalyticsController`/
 `BucketUnit` + unit/slice/integration tests, all green) and frontend (`AnalyticsSection` + all four
 charts, wired into `DashboardPage`). Browser-verified against the full Docker test stack with
 seeded data. Brainstormed and agreed 2026-08-02, refined 2026-08-08 (chart types locked, see [Chart
@@ -73,6 +79,14 @@ investing or show a flat line for it, either of which misleads.
   state and one error state for the whole section.
 
 ## Chart types
+
+> **Superseded 2026-08-09** by
+> [the Reports redesign](2026-08-09-reports-redesign-design.md), which moved every chart from SVG
+> to `<canvas>`, replaced chart 1 with a three-column cash-flow Sankey that includes income,
+> replaced chart 3's mirrored bars with grouped bars, and replaced chart 4's diverging bars with
+> DOM rows. The table below records the reasoning that was current through 2026-08-08 and is kept
+> because the *encoding* arguments (thickness vs. angle, horizontal labels at high row counts) still
+> hold and were carried forward — only the rendering technology and two of the four types changed.
 
 Each of the four charts gets a distinct, locked visualization type — resolving what was previously
 an open question for chart 1 and previously-implicit choices for charts 2–4.

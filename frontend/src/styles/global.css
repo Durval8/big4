@@ -32,56 +32,98 @@ select {
   font-size: inherit;
 }
 
+/* Two-column app frame: a fixed-width rail beside a scrolling page area. `min-width: 0` on the
+   main column is load-bearing — without it a wide child (a table, a chart canvas) would stretch
+   the grid track instead of scrolling inside its own container. */
 .app-shell {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: var(--space-xl) var(--space-lg);
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  min-height: 100vh;
 }
 
-.app-nav {
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-lg) var(--space-md);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.sidebar__brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-xl);
+  gap: var(--space-sm);
+  padding: 0 var(--space-sm);
 }
 
-.app-nav__title {
-  font-size: 22px;
-  font-weight: 600;
+.sidebar__mark {
+  color: var(--color-accent);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.sidebar__title {
+  font-size: 17px;
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 
-.app-nav__right {
+.sidebar__nav {
   display: flex;
-  align-items: center;
-  gap: var(--space-lg);
+  flex-direction: column;
+  gap: 2px;
 }
 
-.app-nav__links {
+.sidebar__link {
   display: flex;
-  gap: var(--space-lg);
-}
-
-/* External link to the GitHub repo. Pill-shaped rather than underlined so it reads as a
-   secondary affordance next to the theme toggle, not as a fourth nav destination. */
-.app-nav__repo {
-  display: inline-flex;
   align-items: center;
-  height: 34px;
-  padding: 0 var(--space-sm);
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  gap: 10px;
+  padding: 9px var(--space-sm);
+  border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   text-decoration: none;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
-  transition: border-color var(--transition-fast), color var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.app-nav__repo:hover {
-  border-color: var(--color-accent);
+.sidebar__link:hover {
+  background: var(--color-bg);
   color: var(--color-text-primary);
+}
+
+.sidebar__link--active {
+  background: var(--color-bg);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.sidebar__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.sidebar__footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.sidebar__link--muted {
+  font-size: 13px;
+}
+
+.app-main {
+  padding: var(--space-lg) var(--space-lg) var(--space-xl);
+  max-width: 1440px;
+  width: 100%;
 }
 
 .theme-toggle {
@@ -103,30 +145,20 @@ select {
   border-color: var(--color-accent);
 }
 
-.app-nav__link {
-  color: var(--color-text-secondary);
-  text-decoration: none;
-  font-size: 15px;
-  font-weight: 500;
-  padding: var(--space-xs) 0;
-  border-bottom: 2px solid transparent;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
-}
-
-.app-nav__link:hover {
-  color: var(--color-text-primary);
-}
-
-.app-nav__link--active {
-  color: var(--color-text-primary);
-  border-bottom-color: var(--color-accent);
-}
-
 .card {
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   padding: var(--space-lg);
+}
+
+/* Charts are the widest thing on the page and the first to suffer from padding — a Sankey's
+   labels compete with it directly. Chart cards therefore run tighter horizontally than the default
+   card, which is tuned for prose and form fields. Must stay *after* `.card`: same specificity, so
+   source order is the only thing deciding this, and defining it up near the shell rules (where it
+   started) silently lost. */
+.card--chart {
+  padding: var(--space-lg) var(--space-md);
 }
 
 .section-header {
@@ -755,46 +787,395 @@ select {
 /* Analytics (Dashboard "Insights" section) */
 /* Full-width, stacked — every chart here has enough data points (up to 8 categories or 31
    time buckets) that a half-width card left them cramped and hard to read. */
-.analytics-grid {
+/* ---------------------------------------------------------------------------
+   Reports
+   --------------------------------------------------------------------------- */
+
+.page {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-section {
+  margin-top: var(--space-xl);
+}
+
+.section-header__link {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.section-header__link:hover {
+  color: var(--color-accent-hover);
+}
+
+.kpi-row {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.kpi-card__value {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-card__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.kpi-card__hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.report-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-lg);
+}
+
+.report-tabs__tab {
+  background: none;
+  border: none;
+  padding: var(--space-sm) 0;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.report-tabs__tab:hover {
+  color: var(--color-text-primary);
+}
+
+.report-tabs__tab--active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.report-tabs__window {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.report-stack {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-md);
 }
 
-.chart-card__title {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: var(--space-md);
+.report-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+  align-items: start;
 }
 
-.chart-card__subtitle {
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.card-head__title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.card-head__meta {
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--color-text-secondary);
+}
+
+/* Title stacked over its summary line, so a control on the other end of the header stays aligned
+   to the title rather than being pushed down by the summary's second line. */
+.card-head__group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* A compact in-card switch — visually subordinate to the page-level range pills, since it scopes
+   one chart rather than the page. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  flex-shrink: 0;
+}
+
+.segmented__option {
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.segmented__option:hover {
+  color: var(--color-text-primary);
+}
+
+.segmented__option--active {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+   Charts
+   --------------------------------------------------------------------------- */
+
+/* The sized box a canvas fills. The canvas itself is always 100%/100% of this and gets its
+   backing-store resolution from useCanvasChart, so height is set here (inline, from the data)
+   and never on the element's width/height attributes. */
+.chart-canvas-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.chart-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .chart-legend {
   display: flex;
   gap: var(--space-md);
-  margin-top: var(--space-sm);
   font-size: 12px;
   color: var(--color-text-secondary);
 }
 
-.chart-legend span {
+.chart-legend__item {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
+  font-weight: 600;
 }
 
-.chart-legend i {
+.chart-legend__swatch {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
-/* Visible only to assistive tech — the data-table fallback behind a chart's SVG. */
+.donut-layout {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xl);
+  flex-wrap: wrap;
+}
+
+.donut-layout__ring {
+  flex-shrink: 0;
+}
+
+/* Two columns of legend rows beside the ring, as in a report layout where the legend carries the
+   numbers. Collapses to one column when the card is narrow. */
+.donut-legend {
+  flex: 1;
+  min-width: 260px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px var(--space-lg);
+  list-style: none;
+}
+
+.donut-legend__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.donut-legend__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transform: translateY(-1px);
+}
+
+.donut-legend__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.donut-legend__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.donut-legend__pct {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.movers {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.movers__row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 11px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.movers__row:last-child {
+  border-bottom: none;
+}
+
+.movers__badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.movers__main {
+  min-width: 0;
+}
+
+.movers__name {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.movers__track {
+  display: block;
+  height: 10px;
+  margin-top: 7px;
+  border-radius: 5px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.movers__fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+}
+
+.movers__figures {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.movers__amount {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.movers__delta {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+@media (max-width: 800px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-md);
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto;
+  }
+
+  .sidebar__nav {
+    flex-direction: row;
+    gap: var(--space-xs);
+  }
+
+  .sidebar__footer {
+    margin-top: 0;
+  }
+
+  .app-main {
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .report-split {
+    grid-template-columns: 1fr;
+  }
+
+  .donut-legend {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Visible only to assistive tech — the data-table fallback behind a chart's canvas. */
 .visually-hidden {
   position: absolute;
   width: 1px;

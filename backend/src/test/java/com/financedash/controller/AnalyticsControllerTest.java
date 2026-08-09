@@ -40,6 +40,7 @@ class AnalyticsControllerTest {
                 BucketUnit.DAY,
                 new BigDecimal("3000.00"), new BigDecimal("1284.55"),
                 List.of(new CategoryTotal(Category.GROCERIES, new BigDecimal("412.30"), new BigDecimal("380.00"))),
+                List.of(new CategoryTotal(Category.SALARY, new BigDecimal("3000.00"), new BigDecimal("3000.00"))),
                 List.of(new TimeBucket(LocalDate.of(2026, 7, 4), BigDecimal.ZERO, new BigDecimal("42.10"))));
     }
 
@@ -58,6 +59,8 @@ class AnalyticsControllerTest {
                 .andExpect(jsonPath("$.categories[0].category").value("GROCERIES"))
                 .andExpect(jsonPath("$.categories[0].amount").value(412.30))
                 .andExpect(jsonPath("$.categories[0].previousAmount").value(380.00))
+                .andExpect(jsonPath("$.incomeCategories[0].category").value("SALARY"))
+                .andExpect(jsonPath("$.incomeCategories[0].amount").value(3000.00))
                 .andExpect(jsonPath("$.buckets[0].start").value("2026-07-04"))
                 .andExpect(jsonPath("$.buckets[0].expense").value(42.10));
     }
