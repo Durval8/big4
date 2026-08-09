@@ -298,6 +298,27 @@ class HoldingServiceIT extends AbstractContainersTest {
         assertThat(s.positionChangePct()).isEqualByComparingTo("0.00");
     }
 
+    @Test
+    void summaryKeepsRealizedGainAfterAHoldingFullyClosesOut() {
+        // A holding that's fully cashed out flips to CASHED_OUT and drops out of every OPEN-only
+        // total (net invested, current value) -- but its realized gain must still count. Otherwise
+        // the one moment realized gain matters most (a position you actually closed) is the moment
+        // it silently disappears from the summary.
+        quoteReturns("10.00");
+        String closedId = service.buy(
+                new BuyRequest("AAPL", new BigDecimal("100.00"), CashAccount.CHECKING, null)).id();
+        Holding closed = holdingRepository.findById(closedId).orElseThrow();
+        closed.setLatestPrice(new BigDecimal("15.0000")); // sell at a gain
+        holdingRepository.save(closed);
+        service.cashOut(closedId, new CashOutRequest(new BigDecimal("100")));
+
+        service.buy(new BuyRequest("MSFT", new BigDecimal("50.00"), CashAccount.SAVINGS, null));
+
+        SummaryResponse s = service.summary();
+        assertThat(s.totalRealizedGain()).isEqualByComparingTo("50.00"); // 150 proceeds - 100 cost
+        assertThat(s.totalNetInvested()).isEqualByComparingTo("50.00"); // MSFT only; AAPL closed
+    }
+
     // --- news-refresh triggers on held-set changes ---
 
     @Test

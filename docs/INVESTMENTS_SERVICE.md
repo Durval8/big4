@@ -18,8 +18,10 @@
   `/api`→backend, `/`→frontend.
 - **Manual pricing** endpoint (`POST /api/investments/{id}/price`) added for UNRESOLVED
   holdings (pricing open q #9); UNRESOLVED symbols are excluded from the price job.
-- **Realized gain** is tracked per holding and totalled in the summary, but a dedicated
-  UI visualization is deferred (pricing open q #5).
+- **Realized gain** is tracked per holding, totalled across *every* holding (open and
+  cashed-out — a fully-closed position must keep counting, since that's the one moment
+  the figure matters most), and surfaced as its own "Realized Gains" card on the
+  Investments page (pricing open q #5, now resolved in favor of showing it).
 - **Snapshot tie-break:** the backend accepts snapshots with an equal `asOf` (last write
   wins) and rejects only strictly-older ones, so a buy + immediate refresh in the same
   millisecond can't drop the newer value.

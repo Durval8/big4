@@ -1,11 +1,11 @@
+import { Link } from "react-router-dom";
 import { useAnalytics } from "../../hooks/useAnalytics";
-import { formatDate } from "../../lib/format";
+import { formatCurrency, formatDate } from "../../lib/format";
 import { EmptyState } from "../common/EmptyState";
-import { CategoryFlowChart } from "./charts/CategoryFlowChart";
-import { SpendingTrendChart } from "./charts/SpendingTrendChart";
-import { IncomeExpenseChart } from "./charts/IncomeExpenseChart";
-import { CategoryMoversChart } from "./charts/CategoryMoversChart";
-import { canShowCategoryFlow, canShowIncomeExpense, canShowMovers, canShowTrend } from "./charts/thresholds";
+import { SpendingDonut } from "../charts/SpendingDonut";
+import { SpendingTrendChart } from "../charts/SpendingTrendChart";
+import { CategoryMoversChart } from "../charts/CategoryMoversChart";
+import { canShowCategoryFlow, canShowMovers, canShowTrend } from "../charts/thresholds";
 import type { TimeRange } from "../../types/transaction";
 
 interface AnalyticsSectionProps {
@@ -13,18 +13,21 @@ interface AnalyticsSectionProps {
 }
 
 /**
- * Dashboard spending visualizations — see
- * docs/superpowers/specs/2026-08-02-transaction-analytics-design.md. Each chart independently
- * decides whether it clears its render threshold; if none do, the section shows a single empty
- * state rather than four separate empty boxes. `range=WEEK` frequently showing few or no charts
- * is intended, not a bug — the section is progressive, earning its density as the window widens.
+ * The dashboard's condensed read on spending. The full cash-flow diagram and the income
+ * comparison live on Reports — this section deliberately carries only the two questions worth
+ * answering without leaving the dashboard ("what did I spend it on" and "what changed"), and
+ * links out for the rest rather than duplicating it.
+ *
+ * Each chart independently decides whether it clears its render threshold; if none do, the
+ * section shows a single empty state rather than three empty boxes. `range=WEEK` frequently
+ * showing few or no charts is intended — the section earns its density as the window widens.
  */
 export function AnalyticsSection({ range }: AnalyticsSectionProps) {
   const { analytics, loading, error } = useAnalytics(range);
 
   if (loading && !analytics) {
     return (
-      <div style={{ marginTop: 40 }}>
+      <div className="dashboard-section">
         <div className="section-header">
           <h2>Insights</h2>
         </div>
@@ -35,7 +38,7 @@ export function AnalyticsSection({ range }: AnalyticsSectionProps) {
 
   if (error || !analytics) {
     return (
-      <div style={{ marginTop: 40 }}>
+      <div className="dashboard-section">
         <div className="section-header">
           <h2>Insights</h2>
         </div>
@@ -44,16 +47,18 @@ export function AnalyticsSection({ range }: AnalyticsSectionProps) {
     );
   }
 
-  const showFlow = canShowCategoryFlow(analytics);
+  const showSpending = canShowCategoryFlow(analytics);
   const showTrend = canShowTrend(analytics);
-  const showIncomeExpense = canShowIncomeExpense(analytics);
   const showMovers = canShowMovers(analytics);
-  const showAny = showFlow || showTrend || showIncomeExpense || showMovers;
+  const showAny = showSpending || showTrend || showMovers;
 
   return (
-    <div style={{ marginTop: 40 }}>
+    <div className="dashboard-section">
       <div className="section-header">
         <h2>Insights</h2>
+        <Link className="section-header__link" to="/reports">
+          Full reports →
+        </Link>
       </div>
 
       {!showAny ? (
@@ -61,39 +66,40 @@ export function AnalyticsSection({ range }: AnalyticsSectionProps) {
           <EmptyState message="Not enough activity in this period to show trends yet." />
         </div>
       ) : (
-        <div className="analytics-grid">
-          {showFlow && (
-            <div className="card">
-              <h3 className="chart-card__title">Spending by category</h3>
-              <CategoryFlowChart categories={analytics.categories} />
-            </div>
+        <div className="report-stack">
+          {showSpending && (
+            <section className="card">
+              <header className="card-head">
+                <h3 className="card-head__title">Spending by category</h3>
+                <span className="card-head__meta">{formatCurrency(analytics.totalExpense)} total</span>
+              </header>
+              <SpendingDonut categories={analytics.categories} />
+            </section>
           )}
-          {showTrend && (
-            <div className="card">
-              <h3 className="chart-card__title">Spending over time</h3>
-              <SpendingTrendChart buckets={analytics.buckets} />
-            </div>
-          )}
-          {showIncomeExpense && (
-            <div className="card">
-              <h3 className="chart-card__title">Income vs. expense</h3>
-              <IncomeExpenseChart buckets={analytics.buckets} />
-            </div>
-          )}
-          {showMovers && (
-            <div className="card">
-              <h3 className="chart-card__title">
-                Biggest movers
-                {analytics.previousFrom && analytics.previousTo && (
-                  <span className="chart-card__subtitle">
-                    {" "}
-                    vs. {formatDate(analytics.previousFrom)} – {formatDate(analytics.previousTo)}
-                  </span>
-                )}
-              </h3>
-              <CategoryMoversChart categories={analytics.categories} />
-            </div>
-          )}
+
+          <div className="report-split">
+            {showTrend && (
+              <section className="card">
+                <header className="card-head">
+                  <h3 className="card-head__title">Spending over time</h3>
+                </header>
+                <SpendingTrendChart buckets={analytics.buckets} />
+              </section>
+            )}
+            {showMovers && (
+              <section className="card">
+                <header className="card-head">
+                  <h3 className="card-head__title">Biggest movers</h3>
+                  {analytics.previousFrom && analytics.previousTo && (
+                    <span className="card-head__meta">
+                      vs. {formatDate(analytics.previousFrom)} – {formatDate(analytics.previousTo)}
+                    </span>
+                  )}
+                </header>
+                <CategoryMoversChart categories={analytics.categories} />
+              </section>
+            )}
+          </div>
         </div>
       )}
     </div>

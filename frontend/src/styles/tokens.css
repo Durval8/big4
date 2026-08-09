@@ -8,6 +8,11 @@
   --color-border: #e5e5ea;
   --color-text-primary: #1d1d1f;
   --color-text-secondary: #6e6e73;
+  /* A third step below secondary, for chart axis ticks and other annotation that must not compete
+     with the data. The canvas charts resolve this by name at draw time, so it has to be defined in
+     every theme block below — an undefined custom property resolves to "" and throws inside
+     addColorStop rather than falling back. */
+  --color-text-tertiary: #a1a1a6;
   --color-accent: #0071e3;
   --color-accent-hover: #0077ed;
   --color-positive: #1d8a3f;
@@ -50,6 +55,7 @@
   --color-border: #2c2c2e;
   --color-text-primary: #f5f5f7;
   --color-text-secondary: #98989d;
+  --color-text-tertiary: #6e6e73;
   --color-accent: #0a84ff;
   --color-accent-hover: #409cff;
   --color-positive: #32d74b;
@@ -73,6 +79,7 @@
     --color-border: #2c2c2e;
     --color-text-primary: #f5f5f7;
     --color-text-secondary: #98989d;
+    --color-text-tertiary: #6e6e73;
     --color-accent: #0a84ff;
     --color-accent-hover: #409cff;
     --color-positive: #32d74b;

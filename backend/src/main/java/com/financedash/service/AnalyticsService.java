@@ -85,12 +85,15 @@ public class AnalyticsService {
             prior = incomeAndExpenseInRange(previousFrom, previousTo);
         }
 
-        List<CategoryTotal> categories = buildCategoryTotals(current, prior, previousFrom != null);
+        List<CategoryTotal> categories =
+                buildCategoryTotals(current, prior, previousFrom != null, TransactionType.EXPENSE);
+        List<CategoryTotal> incomeCategories =
+                buildCategoryTotals(current, prior, previousFrom != null, TransactionType.INCOME);
         List<TimeBucket> buckets = buildBuckets(resolvedFrom, resolvedTo, bucketUnit, current);
 
         return new AnalyticsResponse(
                 resolvedFrom, resolvedTo, previousFrom, previousTo, bucketUnit,
-                totalIncome, totalExpense, categories, buckets);
+                totalIncome, totalExpense, categories, incomeCategories, buckets);
     }
 
     /** Falls back to {@code to} (a single day) when there are no transactions at all yet. */
@@ -122,11 +125,18 @@ public class AnalyticsService {
      * still appears (with {@code amount: 0}) so the movers chart can show the drop. When there's no
      * prior period at all, {@code previousAmount} is null for every row (not zero), and the omit
      * condition simplifies to "this window's amount is zero."
+     *
+     * @param type EXPENSE for the spending breakdown, INCOME for the cash-flow diagram's source
+     *     side. Kept as a parameter rather than two near-identical methods because everything
+     *     except the filter predicate — the union, the zero-omission, the sort — is identical.
      */
     private static List<CategoryTotal> buildCategoryTotals(
-            List<Transaction> current, List<Transaction> prior, boolean hasPriorPeriod) {
-        Map<Category, BigDecimal> currentByCategory = expenseByCategory(current);
-        Map<Category, BigDecimal> priorByCategory = hasPriorPeriod ? expenseByCategory(prior) : Map.of();
+            List<Transaction> current,
+            List<Transaction> prior,
+            boolean hasPriorPeriod,
+            TransactionType type) {
+        Map<Category, BigDecimal> currentByCategory = byCategory(current, type);
+        Map<Category, BigDecimal> priorByCategory = hasPriorPeriod ? byCategory(prior, type) : Map.of();
 
         Set<Category> categories = new LinkedHashSet<>();
         categories.addAll(currentByCategory.keySet());
@@ -146,12 +156,13 @@ public class AnalyticsService {
                 .toList();
     }
 
-    /** EXPENSE only, grouped by category. Category is required for EXPENSE at the API layer, but
-     * the DB column is nullable, so a category-less row (only reachable by bypassing the API) is
-     * excluded here rather than grouped under a null key. */
-    private static Map<Category, BigDecimal> expenseByCategory(List<Transaction> transactions) {
+    /** One transaction type only, grouped by category. Category is required for INCOME/EXPENSE at
+     * the API layer, but the DB column is nullable, so a category-less row (only reachable by
+     * bypassing the API) is excluded here rather than grouped under a null key. */
+    private static Map<Category, BigDecimal> byCategory(
+            List<Transaction> transactions, TransactionType type) {
         return transactions.stream()
-                .filter(t -> t.getTransactionType() == TransactionType.EXPENSE && t.getCategory() != null)
+                .filter(t -> t.getTransactionType() == type && t.getCategory() != null)
                 .collect(Collectors.groupingBy(
                         Transaction::getCategory,
                         Collectors.reducing(BigDecimal.ZERO, Transaction::getAmount, BigDecimal::add)));

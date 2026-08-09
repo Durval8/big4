@@ -1,4 +1,4 @@
-import type { Analytics } from "../../../types/analytics";
+import type { Analytics } from "../../types/analytics";
 
 /**
  * Minimum-data render thresholds — see

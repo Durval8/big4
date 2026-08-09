@@ -80,13 +80,20 @@ public class HoldingService {
         BigDecimal totalRealized = BigDecimal.ZERO;
         BigDecimal pricedCostBasis = BigDecimal.ZERO;
         BigDecimal pricedCurrent = BigDecimal.ZERO;
-        for (Holding h : holdingRepository.findByStatus(HoldingStatus.OPEN)) {
-            totalNet = totalNet.add(h.getNetCashInvested());
-            totalCurrent = totalCurrent.add(h.currentValue());
+        // Realized gain is summed across EVERY holding, not just OPEN ones: it's money already
+        // made on shares already sold, so a position that got fully cashed out (status flips to
+        // CASHED_OUT) must keep counting toward it — dropping it here would erase the gain the
+        // moment someone closes out a winning position, which is the one time it matters most.
+        // Net-invested/current-value stay OPEN-only: they describe money still in the market.
+        for (Holding h : holdingRepository.findAll()) {
             totalRealized = totalRealized.add(h.getRealizedGain());
-            if (h.getLatestPrice() != null && h.getQuantity().signum() > 0) {
-                pricedCostBasis = pricedCostBasis.add(h.getCostBasis());
-                pricedCurrent = pricedCurrent.add(h.currentValue());
+            if (h.getStatus() == HoldingStatus.OPEN) {
+                totalNet = totalNet.add(h.getNetCashInvested());
+                totalCurrent = totalCurrent.add(h.currentValue());
+                if (h.getLatestPrice() != null && h.getQuantity().signum() > 0) {
+                    pricedCostBasis = pricedCostBasis.add(h.getCostBasis());
+                    pricedCurrent = pricedCurrent.add(h.currentValue());
+                }
             }
         }
         BigDecimal pct = percentChange(pricedCurrent, pricedCostBasis);

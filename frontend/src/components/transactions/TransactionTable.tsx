@@ -17,12 +17,12 @@ export function TransactionTable({ transactions, onEdit, onDelete }: Transaction
     <table className="transaction-table">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Description</th>
-          <th>Category</th>
-          <th>Account</th>
-          <th>Amount</th>
-          <th></th>
+          <th scope="col">Date</th>
+          <th scope="col">Description</th>
+          <th scope="col">Category</th>
+          <th scope="col">Account</th>
+          <th scope="col">Amount</th>
+          <th scope="col"></th>
         </tr>
       </thead>
       <tbody>

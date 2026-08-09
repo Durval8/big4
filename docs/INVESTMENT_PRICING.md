@@ -6,8 +6,9 @@
 > a periodic, rate-limited job every 15 minutes. Resolved open questions: Finnhub as the
 > provider (rate limiter sized to 50/min for headroom); buy blocked on transient failure;
 > unknown symbols flagged UNRESOLVED and priced manually (never fetched); STALE keeps the
-> last-known price with a warning; realized gain tracked (UI viz deferred); dev-volume
-> reset for migration.
+> last-known price with a warning; realized gain tracked and shown as its own card on the
+> Investments page (2026-08-09), summed across every holding (open + cashed-out) rather
+> than OPEN-only; dev-volume reset for migration.
 
 ## Summary
 
@@ -168,7 +169,11 @@ Live intraday streaming/websockets, price-history table + true historical net wo
 2. **Broker specifics.** RabbitMQ + Spring AMQP (recommended — native listener/retry/DLQ) vs Redis Streams (lighter, if Redis is wanted for caching too).
 3. **Buy-time fetch failure.** Block the buy, or fall back to manual share entry?
 4. **Cash-out input.** By money amount (symmetric with buy — recommended) or by share count?
-5. **Realized-gain tracking.** Record realized gain on sells now (for history), or defer the reporting and just keep balances correct?
+5. ~~**Realized-gain tracking.**~~ Resolved 2026-08-09: recorded on every sell and shown as its
+   own card on the Investments page, summed across all holdings (not just OPEN) so a fully
+   cashed-out position doesn't drop its gain from the total. Kept entirely inside the investments
+   service — no backend/messaging change, since the figure only needs to be shown on the
+   Investments page itself.
 6. **Symbol validation on add.** Reject unknown symbols, or accept and flag `UNRESOLVED`?
 7. **`UNRESOLVED`/`STALE` in net worth.** Value at last-known price, or exclude, when a symbol can't be priced?
 8. **Migration.** Dev-volume reset (recommended) vs backfill/re-entry.
