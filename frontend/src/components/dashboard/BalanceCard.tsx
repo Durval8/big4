@@ -1,4 +1,4 @@
-import { formatCurrency } from "../../lib/format";
+import { CurrencyValue } from "../common/CurrencyValue";
 
 interface BalanceCardProps {
   label: string;
@@ -13,7 +13,9 @@ export function BalanceCard({ label, value, tone = "neutral" }: BalanceCardProps
   return (
     <div className="card">
       <div className="balance-card__label">{label}</div>
-      <div className={`balance-card__value${toneClass}`}>{formatCurrency(value)}</div>
+      <div className={`balance-card__value${toneClass}`}>
+        <CurrencyValue amount={value} />
+      </div>
     </div>
   );
 }

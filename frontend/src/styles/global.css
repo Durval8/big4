@@ -209,6 +209,23 @@ select {
   color: var(--color-negative);
 }
 
+/* CurrencyValue renders both forms; this picks one per breakpoint. Compact below 800px (the app's
+   one mobile breakpoint) so a 5-6 digit balance stays scannable next to its label in a 2-column
+   grid instead of wrapping or shrinking. */
+.currency-value__compact {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .currency-value__full {
+    display: none;
+  }
+
+  .currency-value__compact {
+    display: inline;
+  }
+}
+
 /* Balances by Account — deliberately distinct from the metric squares above: one grouped panel
    with an accent edge, divided columns, account icons, and larger figures. */
 .accounts-panel {

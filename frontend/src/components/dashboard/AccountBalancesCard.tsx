@@ -1,5 +1,5 @@
 import type { AccountBalances } from "../../types/transaction";
-import { formatCurrency } from "../../lib/format";
+import { CurrencyValue } from "../common/CurrencyValue";
 
 interface AccountBalancesCardProps {
   balances: AccountBalances;
@@ -24,7 +24,9 @@ export function AccountBalancesCard({ balances }: AccountBalancesCardProps) {
               </span>
               {label}
             </span>
-            <span className="account-tile__value">{formatCurrency(balances[key])}</span>
+            <span className="account-tile__value">
+              <CurrencyValue amount={balances[key]} />
+            </span>
           </div>
         ))}
       </div>

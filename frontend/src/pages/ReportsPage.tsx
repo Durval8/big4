@@ -8,6 +8,7 @@ import { SpendingTrendChart } from "../components/charts/SpendingTrendChart";
 import { CategoryMoversChart } from "../components/charts/CategoryMoversChart";
 import { IncomeExpenseCard } from "../components/reports/IncomeExpenseCard";
 import { EmptyState } from "../components/common/EmptyState";
+import { CurrencyValue } from "../components/common/CurrencyValue";
 import { formatCurrency, formatDate, formatPercent } from "../lib/format";
 import type { TimeRange } from "../types/transaction";
 
@@ -49,17 +50,17 @@ export function ReportsPage() {
           <div className="kpi-row">
             <KpiCard
               label="Total income"
-              value={formatCurrency(analytics.totalIncome)}
+              value={<CurrencyValue amount={analytics.totalIncome} />}
               tone="positive"
             />
             <KpiCard
               label="Total expenses"
-              value={formatCurrency(analytics.totalExpense)}
+              value={<CurrencyValue amount={analytics.totalExpense} />}
               tone="negative"
             />
             <KpiCard
               label="Net income"
-              value={formatCurrency(netIncome)}
+              value={<CurrencyValue amount={netIncome} />}
               tone={netIncome >= 0 ? "positive" : "negative"}
             />
             <KpiCard
