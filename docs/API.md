@@ -250,7 +250,11 @@ this list, as `HoldingResponse[]`:
 last price kept) / `UNRESOLVED` (symbol not recognized — priced by hand, never auto-fetched).
 
 ### `GET /api/investments/summary`
-Totals across OPEN holdings: `{ "totalNetInvested", "totalCurrentValue", "totalRealizedGain", "positionChangePct" }`.
+`{ "totalNetInvested", "totalCurrentValue", "totalRealizedGain", "positionChangePct" }`.
+`totalNetInvested`/`totalCurrentValue`/`positionChangePct` are OPEN-holdings-only (money still in
+the market). `totalRealizedGain` is summed across **every** holding regardless of status — a fully
+cashed-out holding drops out of the OPEN-only totals but must keep counting here, since realized
+gain is money already made on shares already sold.
 
 ### `GET /api/investments/{id}`
 Single `HoldingResponse`, or 404.

@@ -23,6 +23,15 @@ export function InvestmentsPage() {
   const pct = summary?.positionChangePct ?? null;
   const pctClass =
     pct == null ? "" : pct > 0 ? "balance-card__value--positive" : pct < 0 ? "balance-card__value--negative" : "";
+  const realizedGain = summary?.totalRealizedGain ?? null;
+  const realizedGainClass =
+    realizedGain == null
+      ? ""
+      : realizedGain > 0
+        ? "balance-card__value--positive"
+        : realizedGain < 0
+          ? "balance-card__value--negative"
+          : "";
 
   return (
     <div>
@@ -34,7 +43,7 @@ export function InvestmentsPage() {
       {error && <div className="error-banner">{error}</div>}
 
       {summary && (
-        <div className="balance-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+        <div className="balance-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
           <div className="card">
             <div className="balance-card__label">Money Invested</div>
             <div className="balance-card__value">{formatCurrency(summary.totalNetInvested)}</div>
@@ -46,6 +55,12 @@ export function InvestmentsPage() {
           <div className="card">
             <div className="balance-card__label">Position Change</div>
             <div className={`balance-card__value ${pctClass}`}>{formatPercent(pct)}</div>
+          </div>
+          <div className="card">
+            <div className="balance-card__label">Realized Gains</div>
+            <div className={`balance-card__value ${realizedGainClass}`}>
+              {realizedGain == null ? "—" : formatCurrency(realizedGain)}
+            </div>
           </div>
         </div>
       )}

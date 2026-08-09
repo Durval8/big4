@@ -232,10 +232,13 @@ the rest rather than duplicating it.
 
 ## Deliberately not in scope
 
-- **Realized gains.** Proposed during design and cut. Realized gain is proceeds − cost basis of
-  shares sold; cost basis lives in Mongo, and per `CLAUDE.md` the backend can never query it. Doing
-  this properly means a new message contract on both sides, an `InvestmentMessageContractTest`
-  fixture update, a Flyway projection table and a consumer — its own epic, not a card on a redesign.
+- **Realized gains as a Reports/backend metric.** Proposed during design and cut from *this*
+  redesign. Piping it to the backend (for a Reports KPI card fed by `/api/balances`) would need a
+  new message contract on both sides, an `InvestmentMessageContractTest` fixture update, a Flyway
+  projection table and a consumer — its own epic, not a card on a redesign. Landed instead
+  (2026-08-09) as a card on the **Investments page**, fully served by the investments service —
+  see [INVESTMENT_PRICING.md](../../INVESTMENT_PRICING.md#open-questions). No backend/messaging
+  change was needed for that narrower scope.
 - **The Accounts screenshot** (net-worth area chart, account groups, asset/liability summary bars).
   Different data sources (`/api/balances` + investments), separate lift.
 - **Category groups.** Monarch's Sankey has a middle taxonomy level (Housing → Mortgage + Home
