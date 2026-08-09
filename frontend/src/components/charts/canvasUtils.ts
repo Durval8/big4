@@ -82,21 +82,11 @@ export function withAlpha(color: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Abbreviates a currency amount for axis ticks: "€1.2k", "€450", "€3.4M", "€0.20" below €10. */
-export function formatAxisCurrency(amount: number): string {
-  const abs = Math.abs(amount);
-  const sign = amount < 0 ? "-" : "";
-  if (abs >= 1_000_000) {
-    return `${sign}€${(abs / 1_000_000).toFixed(1)}M`;
-  }
-  if (abs >= 1_000) {
-    return `${sign}€${(abs / 1_000).toFixed(1)}k`;
-  }
-  if (abs < 10 && abs !== Math.round(abs)) {
-    return `${sign}€${abs.toFixed(2)}`;
-  }
-  return `${sign}€${Math.round(abs)}`;
-}
+/**
+ * Axis-tick abbreviation — the same compact format stat cards use on mobile (CurrencyValue), kept
+ * as one re-exported name here since every chart in this file already imports it from canvasUtils.
+ */
+export { formatCurrencyCompact as formatAxisCurrency } from "../../lib/format";
 
 /**
  * Short label for a bucket start: "Jul 4" for a day or a week (a week is named by the day it

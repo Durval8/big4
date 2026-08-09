@@ -7,7 +7,8 @@ import { CashOutDialog } from "../components/investments/CashOutDialog";
 import { ManualPriceDialog } from "../components/investments/ManualPriceDialog";
 import { NewsCard } from "../components/investments/NewsCard";
 import { Button } from "../components/common/Button";
-import { formatCurrency, formatPercent } from "../lib/format";
+import { CurrencyValue } from "../components/common/CurrencyValue";
+import { formatPercent } from "../lib/format";
 import type { Investment } from "../types/investment";
 
 export function InvestmentsPage() {
@@ -46,11 +47,15 @@ export function InvestmentsPage() {
         <div className="balance-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
           <div className="card">
             <div className="balance-card__label">Money Invested</div>
-            <div className="balance-card__value">{formatCurrency(summary.totalNetInvested)}</div>
+            <div className="balance-card__value">
+              <CurrencyValue amount={summary.totalNetInvested} />
+            </div>
           </div>
           <div className="card">
             <div className="balance-card__label">Current Value</div>
-            <div className="balance-card__value">{formatCurrency(summary.totalCurrentValue)}</div>
+            <div className="balance-card__value">
+              <CurrencyValue amount={summary.totalCurrentValue} />
+            </div>
           </div>
           <div className="card">
             <div className="balance-card__label">Position Change</div>
@@ -59,7 +64,7 @@ export function InvestmentsPage() {
           <div className="card">
             <div className="balance-card__label">Realized Gains</div>
             <div className={`balance-card__value ${realizedGainClass}`}>
-              {realizedGain == null ? "—" : formatCurrency(realizedGain)}
+              {realizedGain == null ? "—" : <CurrencyValue amount={realizedGain} />}
             </div>
           </div>
         </div>

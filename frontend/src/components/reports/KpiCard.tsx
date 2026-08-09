@@ -1,6 +1,10 @@
+import type { ReactNode } from "react";
+
 interface KpiCardProps {
   label: string;
-  value: string;
+  /** A plain string (e.g. a formatted percentage) or a <CurrencyValue> for figures that should
+   *  abbreviate on mobile. */
+  value: ReactNode;
   /** Tints the value. "neutral" leaves it in the primary text color. */
   tone?: "neutral" | "positive" | "negative";
   hint?: string;

@@ -7,6 +7,27 @@ export function formatCurrency(amount: number): string {
   return currencyFormatter.format(amount);
 }
 
+/**
+ * Abbreviates a currency amount for tight spaces: "€1.2k", "€450", "€3.4M", "€0.20" below €10.
+ * Used both for chart axis ticks (see canvasUtils.formatAxisCurrency, a re-export of this) and for
+ * stat-card values on mobile (CurrencyValue), which switch to this below the app's 800px
+ * breakpoint so a 5-6 digit balance stays scannable in a 2-column grid instead of wrapping.
+ */
+export function formatCurrencyCompact(amount: number): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+  if (abs >= 1_000_000) {
+    return `${sign}€${(abs / 1_000_000).toFixed(1)}M`;
+  }
+  if (abs >= 1_000) {
+    return `${sign}€${(abs / 1_000).toFixed(1)}k`;
+  }
+  if (abs < 10 && abs !== Math.round(abs)) {
+    return `${sign}€${abs.toFixed(2)}`;
+  }
+  return `${sign}€${Math.round(abs)}`;
+}
+
 export function formatEnumLabel(value: string): string {
   return value
     .toLowerCase()
