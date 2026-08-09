@@ -82,20 +82,20 @@ export function withAlpha(color: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Abbreviates a currency amount for axis ticks: "$1.2k", "$450", "$3.4M", "$0.20" below $10. */
+/** Abbreviates a currency amount for axis ticks: "€1.2k", "€450", "€3.4M", "€0.20" below €10. */
 export function formatAxisCurrency(amount: number): string {
   const abs = Math.abs(amount);
   const sign = amount < 0 ? "-" : "";
   if (abs >= 1_000_000) {
-    return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+    return `${sign}€${(abs / 1_000_000).toFixed(1)}M`;
   }
   if (abs >= 1_000) {
-    return `${sign}$${(abs / 1_000).toFixed(1)}k`;
+    return `${sign}€${(abs / 1_000).toFixed(1)}k`;
   }
   if (abs < 10 && abs !== Math.round(abs)) {
-    return `${sign}$${abs.toFixed(2)}`;
+    return `${sign}€${abs.toFixed(2)}`;
   }
-  return `${sign}$${Math.round(abs)}`;
+  return `${sign}€${Math.round(abs)}`;
 }
 
 /**

@@ -73,7 +73,7 @@ export function CategoryMoversChart({ categories }: CategoryMoversChartProps) {
               </span>
             </span>
             {/* The change is the headline, not the balance: this list is sorted by movement, and
-                leading with the amount makes a category that dropped to nothing read as "$0.00"
+                leading with the amount makes a category that dropped to nothing read as "€0.00"
                 — which looks like an empty category rather than the biggest drop on the page. */}
             <span className="movers__figures">
               <span className="movers__amount" style={{ color: semantic }}>
