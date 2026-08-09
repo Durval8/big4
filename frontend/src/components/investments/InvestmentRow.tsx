@@ -17,10 +17,10 @@ export function InvestmentRow({ investment, onEdit, onCashOut, onSetPrice }: Inv
 
   return (
     <tr>
-      <td>{investment.stockSymbol}</td>
-      <td>{formatShares(investment.quantity)}</td>
-      <td>{formatPrice(investment.avgCost)}</td>
-      <td>
+      <td data-label="Stock">{investment.stockSymbol}</td>
+      <td data-label="Shares">{formatShares(investment.quantity)}</td>
+      <td data-label="Avg cost">{formatPrice(investment.avgCost)}</td>
+      <td data-label="Price">
         {formatPrice(investment.latestPrice)}
         {unresolved && (
           <span className="pill pill--warning" title="Not recognized by the price provider — priced manually">
@@ -35,12 +35,12 @@ export function InvestmentRow({ investment, onEdit, onCashOut, onSetPrice }: Inv
           </span>
         )}
       </td>
-      <td>{formatCurrency(investment.currentValue)}</td>
-      <td className={pctClass}>{formatPercent(pct)}</td>
-      <td>
+      <td data-label="Value">{formatCurrency(investment.currentValue)}</td>
+      <td data-label="Change" className={pctClass}>{formatPercent(pct)}</td>
+      <td data-label="Status">
         <span className="pill">{formatEnumLabel(investment.status)}</span>
       </td>
-      <td>
+      <td className="transaction-table__actions-cell">
         {open && (
           <div className="row-actions">
             {unresolved && <button onClick={() => onSetPrice(investment)}>Set price</button>}

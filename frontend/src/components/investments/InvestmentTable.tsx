@@ -18,14 +18,14 @@ export function InvestmentTable({ investments, onEdit, onCashOut, onSetPrice }: 
     <table className="transaction-table">
       <thead>
         <tr>
-          <th>Stock</th>
-          <th>Shares</th>
-          <th>Avg cost</th>
-          <th>Price</th>
-          <th>Value</th>
-          <th>Change</th>
-          <th>Status</th>
-          <th></th>
+          <th scope="col">Stock</th>
+          <th scope="col">Shares</th>
+          <th scope="col">Avg cost</th>
+          <th scope="col">Price</th>
+          <th scope="col">Value</th>
+          <th scope="col">Change</th>
+          <th scope="col">Status</th>
+          <th scope="col"></th>
         </tr>
       </thead>
       <tbody>

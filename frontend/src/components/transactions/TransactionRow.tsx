@@ -21,19 +21,19 @@ export function TransactionRow({ transaction, onEdit, onDelete }: TransactionRow
 
   return (
     <tr>
-      <td>{formatDate(transaction.transactionDate)}</td>
-      <td>{transaction.description}</td>
-      <td>
+      <td data-label="Date">{formatDate(transaction.transactionDate)}</td>
+      <td data-label="Description">{transaction.description}</td>
+      <td data-label="Category">
         <span className="pill">
           {transaction.category ? formatEnumLabel(transaction.category) : formatEnumLabel(transaction.transactionType)}
         </span>
       </td>
-      <td>{secondaryTag}</td>
-      <td className={amountClass}>
+      <td data-label="Account">{secondaryTag}</td>
+      <td data-label="Amount" className={amountClass}>
         {sign}
         {formatCurrency(transaction.amount)}
       </td>
-      <td>
+      <td className="transaction-table__actions-cell">
         {transaction.sourceEventId ? (
           // Generated from an investment buy/cash-out. The API rejects edits and deletes on these
           // (the investments service still holds the position), so don't offer the action at all.
